@@ -20,8 +20,13 @@ Application web de gestion de budget personnelle, inspirée des applis les plus 
 ### Sur ton PC
 Double-clique sur `Lancer Mon Budget.bat`. Il faut que Python soit installé. L'appli s'ouvre sur `http://localhost:8765`. Dans Chrome ou Edge, tu peux ensuite l'installer comme une application (icône d'installation dans la barre d'adresse).
 
-### En ligne (pour l'installer sur ton téléphone)
-Active **GitHub Pages** dans les paramètres du dépôt (*Settings → Pages → Branch : `main`, dossier `/root`*). L'appli sera disponible sur `https://<compte>.github.io/MonBudget/`. Sur ton téléphone, ouvre cette adresse puis « Ajouter à l'écran d'accueil ». Les données restent sur le téléphone, même quand l'appli est en ligne.
+### En ligne (téléphone et PC)
+L'appli est publiée avec GitHub Pages : **https://plenitudestudio.github.io/MonBudget/**
+
+- **iPhone (Safari)** : ouvre l'adresse, touche *Partager* puis *Sur l'écran d'accueil*.
+- **Android (Chrome)** : ouvre l'adresse, menu ⋮ puis *Installer l'application* (ou *Ajouter à l'écran d'accueil*).
+
+Chaque `git push` sur `main` met le site à jour en 1 à 2 minutes. Les données restent sur l'appareil, même quand l'appli est en ligne.
 
 > Les données sont propres à chaque appareil et à chaque navigateur. Utilise **Réglages → Exporter la sauvegarde** puis **Restaurer** pour passer de l'un à l'autre.
 
