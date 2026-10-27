@@ -84,6 +84,7 @@ async function lockKey(k) {
 function lockForgot() {
   if (!confirm("Sans le code, la seule solution est d'effacer toutes les données de cet appareil. Continuer ?")) return;
   if (!confirm('Dernière confirmation : effacer comptes, catégories et opérations ?')) return;
+  backupRaw(JSON.stringify(state), 'Avant effacement (code oublié)');
   state = defaultState();
   save();
   lockState = { locked: false, entered: '', error: '' };

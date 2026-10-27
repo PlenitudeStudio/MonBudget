@@ -44,7 +44,10 @@ const S = () => JSON.parse(W.localStorage.getItem(TEST_KEY) || 'null');
 const isoShift = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return app(`toISO(new Date(${d.getTime()}))`); };
 
 async function loadApp(width = 375, height = 760, reset = false) {
-  if (reset) localStorage.removeItem(TEST_KEY);
+  if (reset) {
+    localStorage.removeItem(TEST_KEY);
+    localStorage.removeItem(TEST_KEY + '.backups');
+  }
   frame.style.width = width + 'px';
   frame.width = width;
   frame.height = height;
@@ -123,6 +126,7 @@ async function runAll() {
     passed++; report('Aucune erreur JavaScript', true);
   } catch (e) { failed++; report('Aucune erreur JavaScript', false, e); }
   localStorage.removeItem(TEST_KEY);
+  localStorage.removeItem(TEST_KEY + '.backups');
   summary.textContent = `${passed} réussis · ${failed} échoué${failed > 1 ? 's' : ''}`;
   summary.style.color = failed ? 'var(--ko)' : 'var(--ok)';
   window.__testResult = { passed, failed };
@@ -654,8 +658,51 @@ test('Désactiver le code', async () => {
   eq(app('state.settings.pin'), null, 'code supprimé');
 });
 
+group('Copies de sécurité');
+const backups = () => JSON.parse(localStorage.getItem(TEST_KEY + '.backups') || '[]');
+const OLD_DATA = () => JSON.stringify({
+  version: 1, accounts: [{ id: 'a1', name: 'Compte courant', type: 'checking', initial: 0 }],
+  categories: [{ id: 'c1', name: 'Courses', icon: '🛒', color: '#22a06b', kind: 'expense', fallback: false }],
+  transactions: [{ id: 't1', type: 'expense', amount: 1234, categoryId: 'c1', accountId: 'a1', date: '2026-10-01', note: 'avant', createdAt: 1 }],
+  budgets: { c1: { amount: 5000, rollover: false, since: '2026-10' } }, settings: {},
+});
+test('Copie automatique avant une mise à jour, données conservées', async () => {
+  localStorage.removeItem(TEST_KEY + '.backups');
+  localStorage.setItem(TEST_KEY, OLD_DATA());
+  await loadApp(375, 760);
+  eq(app('state.transactions.length'), 1, 'opération conservée');
+  const b = backups().find((x) => x.reason === 'Avant la mise à jour');
+  assert(b && JSON.parse(b.data).transactions[0].note === 'avant', 'copie avant mise à jour');
+});
+test('Données illisibles : copie gardée et avertissement', async () => {
+  localStorage.setItem(TEST_KEY, '{oops');
+  await loadApp(375, 760);
+  assert(toastText().includes('pas pu être lues'), 'avertissement : ' + toastText());
+  addTx({ amount: '5', cat: 'Courses' });
+  assert(backups().some((b) => b.data === '{oops' && b.reason.includes('illisibles')), 'données d\'origine gardées malgré la sauvegarde suivante');
+});
+test('Restaurer une copie depuis les Réglages', async () => {
+  goto('settings');
+  const i = backups().findIndex((b) => b.reason === 'Avant la mise à jour');
+  click(`[data-action="backup-restore"][data-value="${i}"]`);
+  eq(app('state.transactions.map(t => t.note)'), ['avant'], 'copie restaurée');
+  assert(backups().some((b) => b.reason === 'Avant restauration'), 'copie des données remplacées');
+});
+test('Effacer toutes les données garde une copie', async () => {
+  click('[data-action="reset-all"]');
+  eq(app('state.transactions.length'), 0, 'données effacées');
+  const b = backups().find((x) => x.reason === 'Avant effacement');
+  assert(b && JSON.parse(b.data).transactions.length === 1, 'copie avant effacement');
+  assert(backups().length <= 6, 'nombre de copies limité');
+});
+test('Message d\'aide sur un appareil vide', async () => {
+  goto('home');
+  assert(txt(q('.tip').textContent).includes('Tu avais déjà saisi des données'), 'aide présente');
+});
+
 group('Thème et affichage');
 test('Thème clair / sombre / auto', async () => {
+  goto('settings');
   click('[data-action="theme"][data-value="dark"]');
   eq(D.documentElement.dataset.theme, 'dark', 'sombre');
   click('[data-action="theme"][data-value="light"]');

@@ -12,7 +12,7 @@ Application web de gestion de budget personnelle, inspirée des applis les plus 
 - **Opérations récurrentes** : loyer, salaire, abonnements, avec ajout automatique à chaque échéance, coût annuel des abonnements, mise en pause.
 - **Statistiques** : revenus et dépenses sur 6 ou 12 mois, évolution du solde, taux d'épargne, comparaison par catégorie, prévision de fin de mois.
 - **Import CSV** des relevés bancaires (détection des colonnes, catégorisation automatique, doublons repérés) et **export CSV** pour Excel.
-- **Sauvegarde** JSON (export et restauration), **code PIN** optionnel, thème clair, sombre ou automatique.
+- **Sauvegarde** JSON (export et restauration), **copies de sécurité automatiques** (avant chaque mise à jour, chaque jour, avant chaque restauration ou effacement), rappel d'export, **code PIN** optionnel, thème clair, sombre ou automatique.
 - Interface adaptée au **mobile** (barre d'onglets en bas) et au **PC** (barre latérale, tableau de bord en colonnes).
 
 ## Utilisation
@@ -28,11 +28,13 @@ L'appli est publiée avec GitHub Pages : **https://plenitudestudio.github.io/Mon
 
 Chaque `git push` sur `main` met le site à jour en 1 à 2 minutes. Les données restent sur l'appareil, même quand l'appli est en ligne.
 
+> ⚠️ Chaque navigateur garde ses propres données. **Sur iPhone, l'icône de l'écran d'accueil et Safari ont des données séparées** : installe l'icône d'abord, puis saisis tes données depuis l'icône.
+
 > Les données sont propres à chaque appareil et à chaque navigateur. Utilise **Réglages → Exporter la sauvegarde** puis **Restaurer** pour passer de l'un à l'autre.
 
 ## Tests
 
-Ouvre `tests/index.html` via le serveur local (`http://localhost:8765/tests/`) et clique sur **Lancer les tests**. La suite contient 56 tests de bout en bout : ajout, historique, comptes (solde négatif compris), catégories, budgets mensuels et duplication, épargne, récurrences, statistiques, import et export CSV, sauvegarde, code PIN, thèmes, et affichage en 320, 375, 768 et 1280 px. Elle utilise un profil séparé (`?profil=test`) et ne touche jamais aux vraies données.
+Ouvre `tests/index.html` via le serveur local (`http://localhost:8765/tests/`) et clique sur **Lancer les tests**. La suite contient 61 tests de bout en bout (dont les copies de sécurité et la reprise des données après une mise à jour) : ajout, historique, comptes (solde négatif compris), catégories, budgets mensuels et duplication, épargne, récurrences, statistiques, import et export CSV, sauvegarde, code PIN, thèmes, et affichage en 320, 375, 768 et 1280 px. Elle utilise un profil séparé (`?profil=test`) et ne touche jamais aux vraies données.
 
 ## Structure
 

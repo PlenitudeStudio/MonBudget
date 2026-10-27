@@ -105,6 +105,7 @@ function defaultState() {
   ];
   return {
     version: DATA_VERSION,
+    appVersion: APP_VERSION,
     accounts,
     categories: cats,
     transactions: [],
@@ -126,6 +127,7 @@ function isValidState(s) {
 
 function normalizeState(s) {
   s.version = DATA_VERSION;
+  s.appVersion = APP_VERSION;
   s.settings = Object.assign({ theme: 'auto', lastAccountId: s.accounts[0].id }, s.settings || {});
   if (!s.budgets || typeof s.budgets !== 'object' || Array.isArray(s.budgets)) s.budgets = {};
   // Ancien format (un budget unique par catégorie) : il devient le budget du mois en cours
@@ -152,20 +154,70 @@ function normalizeState(s) {
   return s;
 }
 
-function load() {
+/* ---------- Copies de sécurité automatiques ----------
+   Gardées dans ce navigateur, à côté des données : une avant chaque mise à jour de l'appli,
+   une par jour, une avant chaque restauration, et toujours une si les données sont illisibles. */
+const APP_VERSION = 5;
+const BACKUP_KEY = STORAGE_KEY + '.backups';
+const MAX_BACKUPS = 6;
+let loadIssue = false;
+
+function readBackups() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const s = JSON.parse(raw);
-      if (isValidState(s)) return normalizeState(s);
+    const list = JSON.parse(localStorage.getItem(BACKUP_KEY) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function backupRaw(raw, reason) {
+  if (!raw) return;
+  let list = readBackups().filter((b) => b.data !== raw);
+  list.unshift({ at: Date.now(), reason, data: raw });
+  list = list.slice(0, MAX_BACKUPS);
+  // Si le stockage est plein, on garde moins de copies plutôt que rien
+  while (list.length) {
+    try {
+      localStorage.setItem(BACKUP_KEY, JSON.stringify(list));
+      return;
+    } catch {
+      list.pop();
+    }
+  }
+}
+
+function load() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(STORAGE_KEY);
+  } catch (e) {
+    console.warn('Stockage indisponible', e);
+  }
+  if (!raw) return defaultState();
+  try {
+    const s = JSON.parse(raw);
+    if (isValidState(s)) {
+      if (s.appVersion !== APP_VERSION) backupRaw(raw, 'Avant la mise à jour');
+      return normalizeState(s);
     }
   } catch (e) {
     console.warn('Lecture des données impossible', e);
   }
+  // Données présentes mais illisibles : on en garde une copie avant de repartir de zéro
+  backupRaw(raw, 'Données illisibles au démarrage');
+  loadIssue = true;
   return defaultState();
 }
 
 let state = load();
+
+function dailyBackup() {
+  if (!state.transactions.length) return;
+  const last = readBackups().find((b) => b.reason === 'Copie quotidienne');
+  if (last && Date.now() - last.at < 20 * 3600 * 1000) return;
+  backupRaw(JSON.stringify(state), 'Copie quotidienne');
+}
 
 function save() {
   try {
@@ -355,8 +407,10 @@ function renderHome() {
       <strong>Bienvenue 👋</strong>
       <p class="muted small">Commence par indiquer le solde actuel de tes comptes, puis ajoute tes dépenses et revenus avec le bouton <strong>+</strong>.</p>
       <button class="btn primary" data-action="goto" data-view="accounts">Régler mes comptes</button>
+      <p class="muted small" style="margin:12px 0 0"><strong>Tu avais déjà saisi des données ?</strong> Chaque navigateur garde les siennes, et sur iPhone l'icône de l'écran d'accueil a aussi les siennes, séparées de Safari. Rouvre l'appli comme la première fois, exporte une sauvegarde (Réglages), puis restaure-la ici.${readBackups().length ? ' Tu peux aussi regarder les <button class="link" data-action="goto" data-view="settings">copies de sécurité</button>.' : ''}</p>
     </section>`;
   }
+  html += exportReminder();
 
   html += homePlanCards();
   html += '</div><div class="col">';
@@ -554,10 +608,62 @@ function renderSettings() {
     <button class="btn danger block" style="margin-top:8px" data-action="reset-all">Effacer toutes les données</button>
   </section>
 
+  <div class="section-title">Copies de sécurité</div>
+  <section class="card">
+    <p class="muted small" style="margin-top:0">L'appli garde automatiquement quelques copies de tes données dans ce navigateur : avant chaque mise à jour, une fois par jour, et avant chaque restauration ou effacement.</p>
+    ${backupList()}
+  </section>
+
   <div class="section-title">Sécurité</div>
   <section class="card">${settingsSecurity()}</section>
   ${installPrompt ? `<section class="card"><button class="btn primary block" data-action="install">Installer l'application</button></section>` : ''}
   <p class="muted small" style="text-align:center">Mon Budget · ${state.transactions.length} opération${state.transactions.length > 1 ? 's' : ''} enregistrée${state.transactions.length > 1 ? 's' : ''}</p>`;
+}
+
+function backupList() {
+  const list = readBackups();
+  if (!list.length) return '<p class="muted small" style="margin:0">Aucune copie pour l\'instant.</p>';
+  return `<ul class="list">${list
+    .map((b, i) => {
+      let n = '?';
+      try { n = JSON.parse(b.data).transactions.length; } catch { /* copie illisible */ }
+      const when = new Date(b.at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      return `<li class="list-item" style="cursor:default">
+        <span><strong>${esc(when)}</strong><br><span class="muted small">${esc(b.reason)} · ${n} opération${n === 1 ? '' : 's'}</span></span>
+        <button class="btn" data-action="backup-restore" data-value="${i}">Restaurer</button>
+      </li>`;
+    })
+    .join('')}</ul>`;
+}
+
+function restoreBackup(i) {
+  const b = readBackups()[i];
+  if (!b) return;
+  let data;
+  try {
+    data = JSON.parse(b.data);
+  } catch {
+    return toast('Cette copie est illisible');
+  }
+  if (!isValidState(data)) return toast('Cette copie est illisible');
+  if (!confirm(`Remplacer tes données actuelles par la copie du ${new Date(b.at).toLocaleString('fr-FR')} (${data.transactions.length} opérations) ? Une copie des données actuelles sera gardée.`)) return;
+  backupRaw(JSON.stringify(state), 'Avant restauration');
+  state = normalizeState(data);
+  save();
+  applyTheme();
+  render();
+  toast('Copie restaurée');
+}
+
+/** Rappel d'export : au moins 10 opérations et pas d'export depuis 30 jours. */
+function exportReminder() {
+  const last = state.settings.lastExport || 0;
+  if (state.transactions.length < 10 || Date.now() - last < 30 * 86400000) return '';
+  return `<section class="card tip">
+    <strong>Pense à sauvegarder 💾</strong>
+    <p class="muted small">Tes données sont uniquement sur cet appareil${last ? ` et ta dernière sauvegarde date du ${new Date(last).toLocaleDateString('fr-FR')}` : ''}. Exporte une sauvegarde et range-la en lieu sûr (mail, cloud…).</p>
+    <button class="btn primary" data-action="export">Exporter maintenant</button>
+  </section>`;
 }
 
 /* ---------- Rendu principal ---------- */
@@ -938,6 +1044,9 @@ function downloadFile(name, content, type) {
 }
 
 function exportData() {
+  state.settings.lastExport = Date.now();
+  save();
+  if (ui.view === 'home') render();
   downloadFile(`mon-budget-${todayISO()}.json`, JSON.stringify(state, null, 2), 'application/json');
   toast('Sauvegarde exportée');
 }
@@ -956,6 +1065,7 @@ $('#import-file').addEventListener('change', async (e) => {
     const data = JSON.parse(await file.text());
     if (!isValidState(data)) throw new Error('format');
     if (!confirm(`Remplacer tes données actuelles par cette sauvegarde (${data.transactions.length} opérations) ?`)) return;
+    if (state.transactions.length) backupRaw(JSON.stringify(state), 'Avant restauration');
     state = normalizeState(data);
     save();
     applyTheme();
@@ -967,7 +1077,8 @@ $('#import-file').addEventListener('change', async (e) => {
 });
 
 function resetAll() {
-  if (!confirm('Effacer toutes tes données (comptes, catégories, opérations) ? Pense à exporter une sauvegarde avant.')) return;
+  if (!confirm('Effacer toutes tes données (comptes, catégories, opérations) ? Une copie de sécurité sera gardée dans Réglages.')) return;
+  backupRaw(JSON.stringify(state), 'Avant effacement');
   state = defaultState();
   ui.hist = defaultHistFilters();
   save();
@@ -1082,6 +1193,7 @@ document.addEventListener('click', (e) => {
     case 'cat-delete': return deleteCategory();
     case 'stats-range': ui.statsRange = Number(value); return render();
     case 'csv-export': return exportCsv();
+    case 'backup-restore': return restoreBackup(Number(value));
     default: planAction(action, el, d) || csvAction(action, el, d) || lockAction(action, el);
   }
 });
@@ -1180,6 +1292,10 @@ setupChartTooltip();
 const startCreated = runRecurring();
 render();
 if (state.settings.pin) showLock();
+dailyBackup();
+if (loadIssue) toast('Tes données n\'ont pas pu être lues : une copie est gardée dans Réglages → Copies de sécurité');
+// Demande au navigateur de ne pas effacer les données de l'appli en cas de manque de place
+if (!PROFILE && navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if (startCreated) toast(`${startCreated} opération${startCreated > 1 ? 's' : ''} récurrente${startCreated > 1 ? 's' : ''} ajoutée${startCreated > 1 ? 's' : ''}`);
 if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !PROFILE) {
   navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service worker non enregistré', err));
