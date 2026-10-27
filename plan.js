@@ -91,18 +91,29 @@ function spendIndex() {
   return idx;
 }
 
-function budgetInfo(catId, month, idx = spendIndex()) {
-  const b = state.budgets[catId];
+/* Les budgets sont propres à chaque mois : state.budgets = { "AAAA-MM": { categorie: { amount, rollover } } } */
+const monthBudgets = (m) => state.budgets[m] || {};
+const monthHasBudgets = (m) => Object.keys(monthBudgets(m)).length > 0;
+const hasAnyBudget = () => Object.keys(state.budgets).some(monthHasBudgets);
+function setBudget(m, catId, b) {
+  if (!state.budgets[m]) state.budgets[m] = {};
+  state.budgets[m][catId] = b;
+}
+function removeBudget(m, catId) {
+  if (!state.budgets[m]) return;
+  delete state.budgets[m][catId];
+  if (!monthHasBudgets(m)) delete state.budgets[m];
+}
+
+function budgetInfo(catId, month, idx = spendIndex(), depth = 0) {
+  const b = monthBudgets(month)[catId];
   if (!b) return null;
   const spentOf = (m) => idx.get(catId + '|' + m) || 0;
+  // Report : on reprend le reste (ou le dépassement) du budget du mois précédent, s'il existe
   let carry = 0;
-  if (b.rollover && b.since && b.since < month) {
-    let m = b.since;
-    let guard = 0;
-    while (m < month && guard++ < 240) {
-      carry = b.amount + carry - spentOf(m);
-      m = shiftMonth(m, 1);
-    }
+  if (b.rollover && depth < 36) {
+    const prev = budgetInfo(catId, shiftMonth(month, -1), idx, depth + 1);
+    if (prev) carry = prev.left;
   }
   const available = b.amount + carry;
   const spent = spentOf(month);
@@ -195,7 +206,10 @@ function renderBudgetsTab() {
     .map((c) => ({ c, info: budgetInfo(c.id, ui.month, idx) }))
     .filter((x) => x.info)
     .sort((a, b) => b.info.pct - a.info.pct);
-  const without = expenseCats.filter((c) => !state.budgets[c.id]);
+  const without = expenseCats.filter((c) => !monthBudgets(ui.month)[c.id]);
+  const prevMonth = shiftMonth(ui.month, -1);
+  const prevCount = Object.keys(monthBudgets(prevMonth)).length;
+  const copied = !!state.budgetCopied[ui.month];
 
   let totalAvail = 0, totalSpent = 0, totalPlanned = 0;
   for (const { info } of withBudget) {
@@ -206,6 +220,15 @@ function renderBudgetsTab() {
   const toAssign = income - totalPlanned;
 
   let html = monthSwitch();
+  if (prevCount || copied) {
+    html += `<label class="card toggle dup-toggle">
+      <input type="checkbox" data-budget-copy ${copied ? 'checked' : ''}>
+      <span><strong>Dupliquer le budget du mois précédent</strong><br>
+      <span class="muted small">${prevCount
+        ? `Reprend les ${prevCount} budget${prevCount > 1 ? 's' : ''} de ${esc(monthLabel(prevMonth))}. Tu pourras ensuite les ajuster.`
+        : `Aucun budget en ${esc(monthLabel(prevMonth))}.`}</span></span>
+    </label>`;
+  }
   html += `<section class="card">
     <div class="stat-grid">
       <div><div class="k">Revenus du mois</div><div class="v num">${money(income)}</div></div>
@@ -328,35 +351,38 @@ function renderRecurringTab() {
 }
 
 /* ---------- Cartes de l'accueil ---------- */
-function homePlanCards() {
-  let html = '';
+/** Partie « budgets » du panneau récap du mois (vide s'il n'y a aucun budget). */
+function homeBudgetRecap() {
   const idx = spendIndex();
   const budgets = state.categories
-    .filter((c) => c.kind === 'expense' && state.budgets[c.id])
+    .filter((c) => c.kind === 'expense' && monthBudgets(ui.month)[c.id])
     .map((c) => ({ c, info: budgetInfo(c.id, ui.month, idx) }));
+  if (!budgets.length) return '';
+  let avail = 0, spent = 0;
+  for (const { info } of budgets) {
+    avail += info.available;
+    spent += info.spent;
+  }
+  const pct = avail > 0 ? spent / avail : 0;
+  const alerts = budgets.filter((b) => b.info.pct >= 0.8).sort((a, b) => b.info.pct - a.info.pct).slice(0, 3);
+  return `<div class="recap-budgets">
+    <div class="row-between small"><button class="link" data-action="goto-plan" data-value="budgets">Budgets</button><span class="num"><strong>${money(spent)}</strong> / ${money(avail)}</span></div>
+    ${progressBar(pct, budgetColor(pct))}
+    <div class="muted small">${avail - spent >= 0 ? `Reste ${money(avail - spent)} à dépenser` : `Dépassé de ${money(spent - avail)}`}</div>
+    ${alerts
+      .map(
+        ({ c, info }) => `<button class="alert-row" data-action="edit-budget" data-id="${c.id}">
+          <span>${esc(c.icon)} ${esc(c.name)}</span>
+          <span style="color:${budgetColor(info.pct)};font-weight:700">${info.pct > 1 ? 'Dépassé de ' + money(-info.left) : Math.round(info.pct * 100) + ' %'}</span>
+        </button>`
+      )
+      .join('')}
+  </div>`;
+}
 
-  if (budgets.length) {
-    let avail = 0, spent = 0;
-    for (const { info } of budgets) {
-      avail += info.available;
-      spent += info.spent;
-    }
-    const pct = avail > 0 ? spent / avail : 0;
-    const alerts = budgets.filter((b) => b.info.pct >= 0.8).sort((a, b) => b.info.pct - a.info.pct).slice(0, 3);
-    html += `<div class="section-title">Budgets du mois <button class="link" data-action="goto-plan" data-value="budgets">Voir</button></div>
-    <section class="card">
-      <div class="row-between small"><span class="muted">${avail - spent >= 0 ? `Reste ${money(avail - spent)}` : `Dépassé de ${money(spent - avail)}`}</span><span class="num"><strong>${money(spent)}</strong> / ${money(avail)}</span></div>
-      ${progressBar(pct, budgetColor(pct))}
-      ${alerts
-        .map(
-          ({ c, info }) => `<button class="alert-row" data-action="edit-budget" data-id="${c.id}">
-            <span>${esc(c.icon)} ${esc(c.name)}</span>
-            <span style="color:${budgetColor(info.pct)};font-weight:700">${info.pct > 1 ? 'Dépassé de ' + money(-info.left) : Math.round(info.pct * 100) + ' %'}</span>
-          </button>`
-        )
-        .join('')}
-    </section>`;
-  } else if (state.transactions.length) {
+function homePlanCards() {
+  let html = '';
+  if (!hasAnyBudget() && state.transactions.length) {
     html += `<section class="card tip" style="margin-top:14px"><strong>Fixe tes budgets 🎯</strong>
       <p class="muted small">Définis un plafond par catégorie pour savoir combien il te reste à dépenser.</p>
       <button class="btn primary" data-action="goto-plan" data-value="budgets">Créer un budget</button></section>`;
@@ -387,21 +413,24 @@ function homePlanCards() {
 function openBudget(catId) {
   const c = catById(catId);
   if (!c) return;
-  const b = state.budgets[catId];
-  openSheet('budget', { catId, amountStr: b ? centsToInput(b.amount) : '', rollover: b ? !!b.rollover : false, avg: averageSpend(catId) });
+  const month = ui.month;
+  const b = monthBudgets(month)[catId];
+  openSheet('budget', { catId, month, amountStr: b ? centsToInput(b.amount) : '', rollover: b ? !!b.rollover : false, avg: averageSpend(catId) });
 }
 
 function budgetSheet(d) {
   const c = catById(d.catId);
-  const info = budgetInfo(d.catId, ui.month);
-  return `${sheetHead(state.budgets[d.catId] ? 'Modifier le budget' : 'Nouveau budget')}
-    <div class="row-center" style="margin-bottom:14px">${catIcon(c, 48)}<strong style="font-size:1.1rem">${esc(c.name)}</strong></div>
-    <label class="field"><span>Plafond mensuel (€)</span><input class="input" data-draft="amountStr" inputmode="decimal" placeholder="Ex. 300" value="${esc(d.amountStr)}"></label>
+  const info = budgetInfo(d.catId, d.month);
+  const exists = !!monthBudgets(d.month)[d.catId];
+  return `${sheetHead(exists ? 'Modifier le budget' : 'Nouveau budget')}
+    <div class="row-center" style="margin-bottom:4px">${catIcon(c, 48)}<strong style="font-size:1.1rem">${esc(c.name)}</strong></div>
+    <p class="muted small" style="text-align:center;margin:0 0 14px">Budget de ${esc(monthLabel(d.month))}</p>
+    <label class="field"><span>Plafond du mois (€)</span><input class="input" data-draft="amountStr" inputmode="decimal" placeholder="Ex. 300" value="${esc(d.amountStr)}"></label>
     ${d.avg > 0 ? `<button class="chip" style="margin-bottom:12px" data-action="budget-suggest">Moyenne des 3 derniers mois : ${money(d.avg)}</button>` : ''}
-    <label class="toggle"><input type="checkbox" data-draft="rollover" ${d.rollover ? 'checked' : ''}><span><strong>Reporter le reste</strong><br><span class="muted small">Ce qui n'est pas dépensé (ou le dépassement) passe au mois suivant.</span></span></label>
-    ${info ? `<p class="muted small">Ce mois-ci : ${money(info.spent)} dépensés sur ${money(info.available)}.</p>` : ''}
+    <label class="toggle"><input type="checkbox" data-draft="rollover" ${d.rollover ? 'checked' : ''}><span><strong>Reprendre le reste du mois précédent</strong><br><span class="muted small">Ajoute ce qui n'a pas été dépensé le mois d'avant (ou retire le dépassement), si cette catégorie y avait un budget.</span></span></label>
+    ${info ? `<p class="muted small">${money(info.spent)} dépensés sur ${money(info.available)}${info.carry ? ` (dont ${info.carry > 0 ? '+' : '−'}${money(Math.abs(info.carry))} reportés)` : ''}.</p>` : ''}
     <div class="btn-row">
-      ${state.budgets[d.catId] ? '<button class="btn danger" data-action="budget-delete">Retirer</button>' : ''}
+      ${exists ? '<button class="btn danger" data-action="budget-delete">Retirer</button>' : ''}
       <button class="btn primary" data-action="budget-save">Enregistrer</button>
     </div>`;
 }
@@ -410,28 +439,50 @@ function saveBudget() {
   const d = sheet.draft;
   const amount = parseAmount(d.amountStr);
   if (Number.isNaN(amount) || amount <= 0) return toast('Saisis un plafond supérieur à 0');
-  const prev = state.budgets[d.catId];
-  const rolloverChanged = !prev || !!prev.rollover !== !!d.rollover;
-  state.budgets[d.catId] = {
-    amount,
-    rollover: !!d.rollover,
-    // Le report démarre au mois affiché quand on l'active
-    since: rolloverChanged || !prev.since ? ui.month : prev.since,
-  };
+  const prev = monthBudgets(d.month)[d.catId];
+  setBudget(d.month, d.catId, { amount, rollover: !!d.rollover });
   save();
   closeSheet();
   render();
-  toast(prev ? 'Budget modifié' : 'Budget créé');
+  toast(prev ? 'Budget modifié' : `Budget créé pour ${monthLabel(d.month)}`);
 }
 
 function deleteBudget() {
   const d = sheet.draft;
-  const removed = state.budgets[d.catId];
-  delete state.budgets[d.catId];
+  const removed = monthBudgets(d.month)[d.catId];
+  removeBudget(d.month, d.catId);
   save();
   closeSheet();
   render();
-  toast('Budget retiré', { label: 'Annuler', run: () => { state.budgets[d.catId] = removed; save(); render(); } });
+  toast('Budget retiré', { label: 'Annuler', run: () => { setBudget(d.month, d.catId, removed); save(); render(); } });
+}
+
+/** Case « Dupliquer le budget du mois précédent » de l'onglet Budgets. */
+function toggleBudgetCopy(on) {
+  const m = ui.month;
+  const prev = shiftMonth(m, -1);
+  if (on) {
+    let n = 0;
+    for (const [catId, b] of Object.entries(monthBudgets(prev))) {
+      if (!catById(catId) || monthBudgets(m)[catId]) continue;
+      setBudget(m, catId, { ...b });
+      n++;
+    }
+    state.budgetCopied[m] = true;
+    save();
+    render();
+    toast(n ? `${n} budget${n > 1 ? 's' : ''} repris de ${monthLabel(prev)}` : 'Budgets déjà en place');
+    return;
+  }
+  if (monthHasBudgets(m) && !confirm(`Retirer tous les budgets de ${monthLabel(m)} ?`)) {
+    render();
+    return;
+  }
+  delete state.budgets[m];
+  delete state.budgetCopied[m];
+  save();
+  render();
+  toast(`Budgets de ${monthLabel(m)} retirés`);
 }
 
 /* ---------- Feuilles : objectifs ---------- */

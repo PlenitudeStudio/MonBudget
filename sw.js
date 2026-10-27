@@ -1,5 +1,5 @@
 // Service worker : met l'application en cache pour qu'elle marche hors ligne.
-const CACHE = 'monbudget-v3';
+const CACHE = 'monbudget-v4';
 const FILES = ['./', './index.html', './styles.css', './plan.js', './stats.js', './csv.js', './lock.js', './app.js', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

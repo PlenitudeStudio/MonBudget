@@ -395,6 +395,31 @@ li.goal + li.goal { border-top: 1px solid var(--border); }
 .toggle { display: flex; gap: 12px; align-items: flex-start; margin: 4px 0 12px; cursor: pointer; }
 .toggle input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--accent); flex: none; }
 
+/* ---------- Accueil : disponible, épargne, récap du mois ---------- */
+.acc-lines { list-style: none; margin: -6px 0 0; padding: 0; display: grid; gap: 3px; font-size: .85rem; }
+.acc-lines li { display: flex; justify-content: space-between; gap: 12px; min-width: 0; }
+.hero .acc-lines { opacity: .9; margin-bottom: 2px; }
+.savings-card .acc-lines { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--text-2); }
+.savings-head {
+  width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  border: 0; background: none; padding: 0; text-align: left;
+}
+.savings-head .k { display: block; font-size: .85rem; font-weight: 600; color: var(--text-2); }
+.savings-head .v { display: block; font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; }
+.recap .stat-grid .v { font-size: 1.05rem; }
+.recap-budgets { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.recap-budgets .link { font-size: .85rem; }
+.dup-toggle { margin-bottom: 14px; padding: 12px 14px; }
+
+/* Saisie d'un solde avec signe (+ / −) */
+.input-sign { display: flex; gap: 8px; }
+.input-sign .input { flex: 1; min-width: 0; }
+.sign-btn {
+  flex: none; width: 46px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface-2); font-size: 1.3rem; font-weight: 800; color: var(--income);
+}
+.sign-btn.neg { color: var(--expense); border-color: var(--expense); }
+
 /* ---------- Lot 3 : statistiques ---------- */
 .dash { display: block; }
 .hero-forecast {

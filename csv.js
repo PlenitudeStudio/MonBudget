@@ -283,7 +283,7 @@ function csvSheet(d) {
           </div>`}
     </details>
     ${d.rows.length
-      ? `<div class="summary-row" style="margin:10px 2px"><span>${selected.length} / ${d.rows.length} sélectionnée${selected.length > 1 ? 's' : ''}${dups ? ` · ${dups} doublon${dups > 1 ? 's' : ''} ignoré${dups > 1 ? 's' : ''}` : ''}</span><span class="num"><span class="amt income">+${money(inSum)}</span> · −${money(outSum)}</span></div>
+      ? `<div class="summary-row" style="margin:10px 2px"><span>${selected.length} / ${d.rows.length} sélectionnée${selected.length > 1 ? 's' : ''}${dups ? ` · ${dups} doublon${dups > 1 ? 's' : ''} ignoré${dups > 1 ? 's' : ''}` : ''}</span><span class="num">${[inSum ? '+' + money(inSum) : '', outSum ? '−' + money(outSum) : ''].filter(Boolean).join(' · ')}</span></div>
         <ul class="csv-rows">${d.rows
           .map(
             (r, i) => `<li class="${r.dup ? 'dup' : ''}">

@@ -139,6 +139,8 @@ test('Données par défaut : 3 comptes, 16 catégories, accueil affiché', async
   eq(txt(q('#title').textContent), 'Accueil', 'titre');
   assert(q('.hero'), 'carte de solde absente');
   assert(txt(q('.tip').textContent).includes('Bienvenue'), 'message de bienvenue absent');
+  assert(!q('.recap'), 'pas de récap du mois sans montant saisi');
+  assert(txt(q('.savings-card').textContent).includes('Livret A'), 'panneau épargne avec le détail des livrets');
 });
 
 group('Ajout express');
@@ -187,6 +189,18 @@ test('Revenu et virement entre comptes', async () => {
   eq(bal[a0], 200000 - 4250 - 750 - 30000, 'compte courant');
   eq(bal[a1], 30000, 'livret');
   eq(app('totalBalance()'), 200000 - 4250 - 750, 'solde total (virement neutre)');
+});
+test('Accueil : disponible, épargne et récap du mois séparés', async () => {
+  goto('home');
+  const hero = txt(q('.hero').textContent);
+  assert(hero.includes('Disponible') && hero.includes('1 650,00'), 'disponible (courant + espèces) : ' + hero);
+  assert(hero.includes('Compte courant') && hero.includes('Espèces'), 'détail des comptes disponibles');
+  eq(txt(q('.savings-head .v').textContent), '300,00 €', 'épargne totale');
+  const recap = txt(q('.recap').textContent);
+  assert(recap.includes('2 000,00') && recap.includes('50,00'), 'récap du mois : ' + recap);
+  click('[data-action="month-prev"]');
+  assert(!q('.recap'), 'pas de récap pour un mois vide');
+  click('[data-action="month-next"]');
 });
 test('Virement refusé vers le même compte', async () => {
   click('#fab');
@@ -241,6 +255,13 @@ test('Filtres type, catégorie, montant, période', async () => {
   click('[data-action="hist-period"][data-value="month"]');
   click('[data-action="month-next"]');
 });
+test('Total de la liste : seulement les montants non nuls, sans couleur', async () => {
+  click('[data-action="hist-type"][data-value="expense"]');
+  const sum = txt(q('.summary-row').textContent);
+  assert(!sum.includes('+0,00') && !sum.includes('+'), 'pas de « +0,00 » : ' + sum);
+  assert(!q('.summary-row .amt'), 'pas de montant coloré');
+  click('[data-action="hist-type"][data-value=""]');
+});
 
 group('Comptes et catégories');
 test('Ajouter un compte avec solde de départ', async () => {
@@ -251,6 +272,26 @@ test('Ajouter un compte avec solde de départ', async () => {
   click('[data-action="acc-save"]');
   const a = app('state.accounts.at(-1)');
   eq([a.name, a.initial], ['Compte joint', 125075], 'compte créé');
+});
+test('Solde de départ négatif (bouton ± et signe tapé)', async () => {
+  click('[data-action="add-account"]');
+  setVal('#acc-name', 'Découvert');
+  setVal('#acc-initial', '250,40');
+  click('[data-action="acc-sign"]');
+  eq(txt(q('[data-action="acc-sign"]').textContent), '−', 'bouton sur −');
+  click('[data-action="acc-save"]');
+  eq(app('state.accounts.at(-1).initial'), -25040, 'solde négatif enregistré');
+  assert(q('.acc .bal.neg'), 'solde affiché en négatif');
+  click(qa('[data-action="edit-account"]').at(-1));
+  eq(q('[data-action="acc-sign"]').getAttribute('aria-pressed'), 'true', 'signe conservé à la modification');
+  eq(q('#acc-initial').value, '250,40', 'montant sans le signe');
+  click('[data-action="acc-sign"]');
+  setVal('#acc-initial', '-12');
+  click('[data-action="acc-save"]');
+  eq(app('state.accounts.at(-1).initial'), -1200, '« - » tapé au clavier');
+  click(qa('[data-action="edit-account"]').at(-1));
+  click('[data-action="acc-delete"]');
+  eq(app('state.accounts.length'), 4, 'compte de test supprimé');
 });
 test('Suppression bloquée si le compte est utilisé, autorisée sinon', async () => {
   click(qa('[data-action="edit-account"]')[0]);
@@ -302,14 +343,50 @@ test('Report du reste sur le mois suivant', async () => {
   const prevMonth = app('shiftMonth(currentMonth(), -1)');
   addTx({ amount: '60', cat: 'Restaurants', date: prevMonth + '-10' });
   goto('plan');
+  // Budget de 100 € le mois précédent (60 € dépensés)…
   click('[data-action="month-prev"]');
+  click(`[data-action="edit-budget"][data-id="${resto}"]`);
+  setVal('[data-draft="amountStr"]', '100');
+  click('[data-action="budget-save"]');
+  click('[data-action="month-next"]');
+  // …puis 100 € ce mois-ci en reprenant le reste
   click(`[data-action="edit-budget"][data-id="${resto}"]`);
   setVal('[data-draft="amountStr"]', '100');
   setVal('[data-draft="rollover"]', true);
   click('[data-action="budget-save"]');
-  click('[data-action="month-next"]');
   const info = app(`budgetInfo("${resto}", currentMonth())`);
   eq([info.carry, info.available], [4000, 14000], 'report de 40 €');
+});
+test('Budgets propres à chaque mois (pas de reprise automatique)', async () => {
+  const courses = catId('Courses');
+  const prev = app('shiftMonth(currentMonth(), -1)');
+  eq(app(`monthBudgets("${prev}")["${courses}"]`), undefined, 'Courses sans budget le mois précédent');
+  click('[data-action="month-next"]');
+  eq(qa('.budget-row').length, 0, 'mois suivant vide');
+  click('[data-action="month-prev"]');
+  eq(qa('.budget-row').length, 2, 'mois en cours : 2 budgets');
+});
+test('Case « Dupliquer le budget du mois précédent »', async () => {
+  click('[data-action="month-next"]');
+  const next = app('ui.month');
+  const box = q('[data-budget-copy]');
+  assert(box && !box.checked, 'case présente et décochée');
+  setVal(box, true, 'change');
+  eq(qa('.budget-row').length, 2, 'budgets repris');
+  eq(app(`monthBudgets("${next}")["${catId('Courses')}"].amount`), 10000, 'montant repris');
+  assert(q('[data-budget-copy]').checked, 'case cochée');
+  // Les modifications du mois suivant ne touchent pas le mois en cours
+  click(`[data-action="edit-budget"][data-id="${catId('Courses')}"]`);
+  setVal('[data-draft="amountStr"]', '150');
+  click('[data-action="budget-save"]');
+  eq(app(`monthBudgets(currentMonth())["${catId('Courses')}"].amount`), 10000, 'mois en cours inchangé');
+  setVal(q('[data-budget-copy]'), false, 'change');
+  eq(app(`monthHasBudgets("${next}")`), false, 'budgets retirés en décochant');
+  click('[data-action="month-prev"]');
+});
+test('Ancien format de budgets converti au mois en cours', async () => {
+  const s = app('normalizeState({ accounts: [{ id: "a", name: "C", type: "checking", initial: 0 }], categories: [], transactions: [], budgets: { x: { amount: 5000, rollover: true, since: "2026-01" } } })');
+  eq(s.budgets, { [app('currentMonth()')]: { x: { amount: 5000, rollover: false } } }, 'migration');
 });
 test('Suggestion basée sur la moyenne des 3 derniers mois', async () => {
   click(`[data-action="edit-budget"][data-id="${catId('Restaurants')}"]`);
@@ -419,7 +496,7 @@ test('Prévision de fin de mois = solde + récurrences à venir', async () => {
   setVal('[data-draft="categoryId"]', catId('Logement'), 'change');
   setVal('[data-draft="nextDate"]', isoShift(1));
   click('[data-action="rec-save"]');
-  eq(app('forecast().projected'), app('totalBalance()') - 70000, 'solde prévu');
+  eq(app('forecast().projected'), app('availableBalance()') - 70000, 'disponible prévu');
   goto('home');
   assert(q('.hero-forecast'), 'prévision sur l\'accueil');
 });
@@ -541,7 +618,7 @@ test('Export JSON, effacement puis restauration', async () => {
   await wait(150);
   eq(app('state.transactions.length'), n, 'données restaurées');
   eq(app('state.goals.length'), 1, 'objectifs restaurés');
-  assert(app('Object.keys(state.budgets).length') === 2, 'budgets restaurés');
+  eq(app('Object.keys(monthBudgets(currentMonth())).length'), 2, 'budgets du mois restaurés');
 });
 test('Persistance après rechargement', async () => {
   const n = app('state.transactions.length');

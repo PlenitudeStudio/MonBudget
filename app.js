@@ -109,6 +109,7 @@ function defaultState() {
     categories: cats,
     transactions: [],
     budgets: {},
+    budgetCopied: {},
     goals: [],
     recurring: [],
     settings: { theme: 'auto', lastAccountId: accounts[0].id },
@@ -127,6 +128,15 @@ function normalizeState(s) {
   s.version = DATA_VERSION;
   s.settings = Object.assign({ theme: 'auto', lastAccountId: s.accounts[0].id }, s.settings || {});
   if (!s.budgets || typeof s.budgets !== 'object' || Array.isArray(s.budgets)) s.budgets = {};
+  // Ancien format (un budget unique par catégorie) : il devient le budget du mois en cours
+  const legacy = Object.entries(s.budgets).filter(([, v]) => v && typeof v.amount === 'number');
+  if (legacy.length) {
+    const m = currentMonth();
+    const migrated = {};
+    for (const [catId, b] of legacy) migrated[catId] = { amount: b.amount, rollover: false };
+    s.budgets = { [m]: migrated };
+  }
+  if (!s.budgetCopied || typeof s.budgetCopied !== 'object') s.budgetCopied = {};
   if (!Array.isArray(s.goals)) s.goals = [];
   s.goals.forEach((g) => { if (!Array.isArray(g.moves)) g.moves = []; });
   if (!Array.isArray(s.recurring)) s.recurring = [];
@@ -187,6 +197,23 @@ function balances() {
   return map;
 }
 const totalBalance = () => [...balances().values()].reduce((s, v) => s + v, 0);
+
+// Comptes d'épargne (livrets…) d'un côté, argent disponible (courant, espèces, carte…) de l'autre
+const isSavingsAcc = (a) => a.type === 'savings';
+function balanceGroups() {
+  const bal = balances();
+  const avail = [], savings = [];
+  for (const a of state.accounts) (isSavingsAcc(a) ? savings : avail).push({ a, b: bal.get(a.id) || 0 });
+  const sum = (list) => list.reduce((s, x) => s + x.b, 0);
+  return { avail, savings, availTotal: sum(avail), savingsTotal: sum(savings) };
+}
+const availableBalance = () => balanceGroups().availTotal;
+
+function accountLines(list) {
+  return `<ul class="acc-lines">${list
+    .map(({ a, b }) => `<li><span class="ellipsis">${esc(a.name)}</span><span class="num">${money(b)}</span></li>`)
+    .join('')}</ul>`;
+}
 
 function monthStats(key) {
   let income = 0, expense = 0;
@@ -290,16 +317,38 @@ function renderHome() {
   const rest = income - expense;
   let html = monthSwitch() + '<div class="dash"><div class="col">';
 
+  const g = balanceGroups();
   html += `<section class="card hero">
-    <div class="label">Solde total de tes comptes</div>
-    <div class="amount num">${money(totalBalance())}</div>
-    <div class="hero-grid">
-      <div><div class="k">Revenus</div><div class="v num">${money(income)}</div></div>
-      <div><div class="k">Dépenses</div><div class="v num">${money(expense)}</div></div>
-      <div><div class="k">Solde du mois</div><div class="v num">${rest > 0 ? '+' : ''}${money(rest)}</div></div>
-    </div>
+    <div class="label">Disponible sur ${g.avail.length > 1 ? 'tes comptes' : 'ton compte'}</div>
+    <div class="amount num">${money(g.availTotal)}</div>
+    ${g.avail.length > 1 ? accountLines(g.avail) : ''}
     ${ui.month === currentMonth() ? heroForecast() : ''}
   </section>`;
+
+  if (g.savings.length) {
+    const reserved = state.goals.length ? totalSaved() : 0;
+    html += `<section class="card savings-card">
+      <button class="savings-head" data-action="goto" data-view="accounts">
+        <span><span class="k">Épargne totale</span><span class="v num">${money(g.savingsTotal)}</span></span>
+        <span class="muted">›</span>
+      </button>
+      ${accountLines(g.savings)}
+      ${reserved ? `<p class="muted small" style="margin:6px 0 0">dont ${money(reserved)} réservés pour tes objectifs</p>` : ''}
+    </section>`;
+  }
+
+  // Récap du mois : seulement quand des montants sont saisis pour ce mois
+  if (income || expense) {
+    html += `<section class="card recap">
+      <div class="chart-head"><h3>Récap de ${esc(monthLong(ui.month))}</h3>${ui.month !== currentMonth() ? `<span class="muted small">${parseISO(ui.month + '-01').getFullYear()}</span>` : ''}</div>
+      <div class="stat-grid">
+        <div><div class="k">Revenus</div><div class="v num">${money(income)}</div></div>
+        <div><div class="k">Dépenses</div><div class="v num">${money(expense)}</div></div>
+        <div><div class="k">Solde du mois</div><div class="v num" style="color:${rest >= 0 ? 'var(--income)' : 'var(--expense)'}">${rest > 0 ? '+' : rest < 0 ? '−' : ''}${money(Math.abs(rest))}</div></div>
+      </div>
+      ${homeBudgetRecap()}
+    </section>`;
+  }
 
   if (state.transactions.length === 0) {
     html += `<section class="card tip">
@@ -429,7 +478,8 @@ function renderHistoryResults() {
     if (t.type === 'income') inc += t.amount;
     else if (t.type === 'expense') exp += t.amount;
   }
-  let html = `<div class="summary-row"><span>${list.length} opération${list.length > 1 ? 's' : ''}</span><span class="num"><span class="amt income">+${money(inc)}</span> · <span>−${money(exp)}</span></span></div>`;
+  const totals = [inc ? '+' + money(inc) : '', exp ? '−' + money(exp) : ''].filter(Boolean).join(' · ');
+  let html = `<div class="summary-row"><span>${list.length} opération${list.length > 1 ? 's' : ''}</span><span class="num">${totals}</span></div>`;
 
   const groups = new Map();
   for (const t of list) {
@@ -746,12 +796,19 @@ function deleteTx() {
 /* --- Comptes --- */
 function accSheet(d) {
   const used = d.id && accountInUse(d.id);
+  const neg = d.initialStr.trim().startsWith('-');
   return `${sheetHead(d.id ? 'Modifier le compte' : 'Nouveau compte')}
     <label class="field"><span>Nom</span><input class="input" id="acc-name" maxlength="40" value="${esc(d.name)}" placeholder="Ex. Compte joint"></label>
     <label class="field"><span>Type</span><select class="input" id="acc-type">${Object.entries(ACCOUNT_TYPES)
       .map(([k, v]) => `<option value="${k}" ${d.type === k ? 'selected' : ''}>${v.icon} ${v.label}</option>`)
       .join('')}</select></label>
-    <label class="field"><span>Solde de départ (€)</span><input class="input" id="acc-initial" inputmode="decimal" value="${esc(d.initialStr)}" placeholder="0,00"></label>
+    <div class="field"><span>Solde de départ (€)</span>
+      <div class="input-sign">
+        <button type="button" class="sign-btn ${neg ? 'neg' : ''}" data-action="acc-sign" aria-pressed="${neg}" aria-label="Solde négatif (découvert)" title="Solde négatif (découvert)">${neg ? '−' : '+'}</button>
+        <input class="input" id="acc-initial" inputmode="decimal" value="${esc(d.initialStr.replace(/^-/, ''))}" placeholder="0,00" aria-label="Solde de départ">
+      </div>
+      <span class="muted small" style="font-weight:400">Touche <strong>+</strong> pour passer en <strong>−</strong> si le compte est à découvert.</span>
+    </div>
     <div class="field"><span>Couleur</span><div class="swatches">${PALETTE.map(
       (c) => `<button class="swatch" style="background:${c}" data-action="pick-color" data-color="${c}" aria-label="Couleur ${c}" aria-pressed="${d.color === c}"></button>`
     ).join('')}</div></div>
@@ -776,8 +833,11 @@ function openAccount(id) {
 function saveAccount() {
   const d = sheet.draft;
   const name = $('#acc-name').value.trim();
+  // Négatif si le bouton ± est sur « − » ou si un « - » a été tapé au clavier
   const initialRaw = $('#acc-initial').value.trim();
-  const initial = initialRaw === '' ? 0 : parseAmount(initialRaw);
+  const negative = $('[data-action="acc-sign"]').getAttribute('aria-pressed') === 'true' || initialRaw.startsWith('-');
+  const abs = initialRaw.replace(/^[-+]/, '');
+  const initial = abs === '' ? 0 : (negative ? -1 : 1) * Math.abs(parseAmount(abs));
   if (!name) return toast('Donne un nom au compte');
   if (Number.isNaN(initial)) return toast('Solde de départ invalide');
   const acc = { id: d.id || uid(), name, type: $('#acc-type').value, initial, color: safeColor(d.color) };
@@ -856,7 +916,7 @@ function deleteCategory() {
   if (!confirm(msg)) return;
   used.forEach((t) => (t.categoryId = fb.id));
   state.recurring.forEach((r) => { if (r.categoryId === cat.id) r.categoryId = fb.id; });
-  delete state.budgets[cat.id];
+  for (const m of Object.keys(state.budgets)) removeBudget(m, cat.id);
   state.categories = state.categories.filter((c) => c.id !== cat.id);
   if (ui.hist.categoryId === cat.id) ui.hist.categoryId = '';
   save();
@@ -1007,6 +1067,15 @@ document.addEventListener('click', (e) => {
       d.kind = el.dataset.type;
       sheetBody.querySelectorAll('[data-action="cat-kind"]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.type === d.kind)));
       return;
+    case 'acc-sign': {
+      const neg = el.getAttribute('aria-pressed') !== 'true';
+      el.setAttribute('aria-pressed', String(neg));
+      el.classList.toggle('neg', neg);
+      el.textContent = neg ? '−' : '+';
+      const input = $('#acc-initial');
+      input.value = input.value.replace(/^[-+]\s*/, '');
+      return;
+    }
     case 'acc-save': return saveAccount();
     case 'acc-delete': return deleteAccount();
     case 'cat-save': return saveCategory();
@@ -1033,6 +1102,7 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', (e) => {
   const t = e.target;
   if (csvChange(t)) return;
+  if (t.hasAttribute('data-budget-copy')) return toggleBudgetCopy(t.checked);
   if (t.dataset.hist && t.tagName === 'SELECT') {
     ui.hist[t.dataset.hist] = t.value;
     render();

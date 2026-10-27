@@ -56,22 +56,32 @@ function recurringOccurrences(r, afterISO, untilISO) {
   return out;
 }
 
-/** Solde prévu à la fin du mois en cours, d'après les opérations récurrentes à venir. */
+/** Effet d'une opération récurrente sur l'argent disponible (hors comptes d'épargne). */
+function availableEffect(r) {
+  const isAvail = (id) => { const a = accById(id); return !!a && !isSavingsAcc(a); };
+  if (r.type === 'income') return isAvail(r.accountId) ? r.amount : 0;
+  if (r.type === 'expense') return isAvail(r.accountId) ? -r.amount : 0;
+  return (isAvail(r.toAccountId) ? r.amount : 0) - (isAvail(r.accountId) ? r.amount : 0);
+}
+
+/** Disponible prévu à la fin du mois en cours, d'après les opérations récurrentes à venir
+    (y compris les virements automatiques vers l'épargne). */
 function forecast() {
   const today = todayISO();
   const end = endOfMonth(currentMonth());
   const items = [];
   for (const r of state.recurring) {
-    if (!r.active || r.type === 'transfer' || !recIsValid(r)) continue;
-    for (const date of recurringOccurrences(r, today, end)) {
-      items.push({ date, name: recName(r), type: r.type, amount: r.amount, cat: catById(r.categoryId) });
-    }
+    if (!r.active || !recIsValid(r)) continue;
+    const effect = availableEffect(r);
+    if (!effect) continue;
+    for (const date of recurringOccurrences(r, today, end)) items.push({ date, name: recName(r), type: r.type, effect });
   }
   items.sort((a, b) => (a.date < b.date ? -1 : 1));
-  const start = totalBalance();
-  const delta = items.reduce((s, it) => s + (it.type === 'income' ? it.amount : -it.amount), 0);
+  const start = availableBalance();
+  const delta = items.reduce((s, it) => s + it.effect, 0);
   return { start, end, items, delta, projected: start + delta };
 }
+const signedEffect = (c) => (c > 0 ? '+' : c < 0 ? '−' : '') + money(Math.abs(c));
 
 function heroForecast() {
   const f = forecast();
@@ -147,12 +157,12 @@ function renderStats() {
   const f = forecast();
   html += `<section class="card">
     <div class="chart-head"><h3>Prévision fin ${esc(monthLong(cur))}</h3></div>
-    <div class="forecast-line"><span class="muted">Solde actuel</span><span class="num">${money(f.start)}</span></div>
-    <div class="forecast-line"><span class="muted">Opérations récurrentes à venir</span><span class="num">${f.delta >= 0 ? '+' : '−'}${money(Math.abs(f.delta))}</span></div>
-    <div class="forecast-line total"><span>Solde prévu au ${esc(shortDate(f.end))}</span><span class="num">${money(f.projected)}</span></div>
+    <div class="forecast-line"><span class="muted">Disponible aujourd'hui</span><span class="num">${money(f.start)}</span></div>
+    <div class="forecast-line"><span class="muted">Opérations récurrentes à venir</span><span class="num">${signedEffect(f.delta)}</span></div>
+    <div class="forecast-line total"><span>Disponible prévu au ${esc(shortDate(f.end))}</span><span class="num">${money(f.projected)}</span></div>
     ${f.items.length
       ? `<ul class="list small" style="margin-top:6px">${f.items
-          .map((it) => `<li class="forecast-line"><span><span class="date-pill">${esc(shortDate(it.date))}</span> ${esc(it.name)}</span><span class="num amt ${it.type}">${signedMoney(it.amount, it.type)}</span></li>`)
+          .map((it) => `<li class="forecast-line"><span><span class="date-pill">${esc(shortDate(it.date))}</span> ${esc(it.name)}</span><span class="num amt ${it.type}">${signedEffect(it.effect)}</span></li>`)
           .join('')}</ul>`
       : `<p class="muted small">Aucune opération récurrente d'ici la fin du mois. <button class="link" data-action="goto-plan" data-value="recurring">Ajouter tes charges fixes</button> pour une prévision plus juste.</p>`}
   </section>`;
