@@ -1,0 +1,7 @@
+# Sauvegardes personnelles exportées : ne jamais les publier
+mon-budget-*.json
+mon-budget-*.csv
+*.csv
+!tests/**/*.csv
+.DS_Store
+Thumbs.db

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tests Mon Budget</title>
+  <style>
+    :root { --bg: #f4f5f7; --surface: #fff; --text: #15181d; --text-2: #5d6673; --ok: #1b8a4c; --ko: #c23b32; --border: #e1e4e9; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0e1116; --surface: #171b22; --text: #e9edf2; --text-2: #9aa4b2; --ok: #4ade80; --ko: #f87171; --border: #2a313d; }
+    }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, sans-serif; }
+    header { padding: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    h1 { margin: 0; font-size: 1.3rem; flex-basis: 100%; }
+    p { margin: 0; color: var(--text-2); flex-basis: 100%; }
+    button { font: inherit; padding: 8px 14px; border-radius: 10px; border: 0; background: #0f766e; color: #fff; font-weight: 700; cursor: pointer; }
+    #summary { font-weight: 800; }
+    .wrap { display: flex; flex-wrap: wrap; gap: 16px; padding: 0 16px 16px; align-items: flex-start; }
+    iframe { border: 1px solid var(--border); border-radius: 12px; background: #fff; max-width: 100%; }
+    ol { margin: 0; padding: 12px 12px 12px 36px; background: var(--surface); border-radius: 12px; flex: 1; min-width: 300px; max-height: 80vh; overflow: auto; }
+    li { padding: 3px 0; }
+    li.ok::marker { color: var(--ok); }
+    li.ko { color: var(--ko); font-weight: 600; }
+    li .err { display: block; font-weight: 400; font-size: .85rem; }
+    li.group { list-style: none; margin: 10px 0 2px -20px; font-weight: 800; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Tests automatiques — Mon Budget</h1>
+    <p>Les tests utilisent un profil séparé (<code>?profil=test</code>) : tes vraies données ne sont jamais modifiées.</p>
+    <button id="run">Lancer les tests</button>
+    <span id="summary"></span>
+  </header>
+  <div class="wrap">
+    <iframe id="app" title="Application testée" width="375" height="760"></iframe>
+    <ol id="results"></ol>
+  </div>
+  <script src="tests.js"></script>
+</body>
+</html>
