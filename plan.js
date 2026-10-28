@@ -350,63 +350,111 @@ function renderRecurringTab() {
   return html;
 }
 
-/* ---------- Cartes de l'accueil ---------- */
-/** Partie « budgets » du panneau récap du mois (vide s'il n'y a aucun budget). */
-function homeBudgetRecap() {
+/* ---------- Fenêtres de l'accueil ---------- */
+/** Budgets du mois affiché : marge globale, dépassements, enveloppes par catégorie. */
+function homeBudgetsCard() {
   const idx = spendIndex();
-  const budgets = state.categories
+  const list = state.categories
     .filter((c) => c.kind === 'expense' && monthBudgets(ui.month)[c.id])
-    .map((c) => ({ c, info: budgetInfo(c.id, ui.month, idx) }));
-  if (!budgets.length) return '';
+    .map((c) => ({ c, info: budgetInfo(c.id, ui.month, idx) }))
+    .sort((a, b) => b.info.available - a.info.available);
+  const base = { cls: 'home-budgets', color: 'yellow', icon: 'wallet', title: 'Budgets par catégorie' };
+  if (!list.length) {
+    return win({
+      ...base,
+      link: `<button class="win-link" data-action="goto-plan" data-value="budgets">Créer →</button>`,
+      body: `<p class="note">Aucun budget pour ${esc(monthLabel(ui.month))}. Fixe un plafond par catégorie pour savoir combien il te reste à dépenser.</p>
+        <button class="btn primary" data-action="goto-plan" data-value="budgets">Créer un budget</button>`,
+    });
+  }
   let avail = 0, spent = 0;
-  for (const { info } of budgets) {
+  for (const { info } of list) {
     avail += info.available;
     spent += info.spent;
   }
-  const pct = avail > 0 ? spent / avail : 0;
-  const alerts = budgets.filter((b) => b.info.pct >= 0.8).sort((a, b) => b.info.pct - a.info.pct).slice(0, 3);
-  return `<div class="recap-budgets">
-    <div class="row-between small"><button class="link" data-action="goto-plan" data-value="budgets">Budgets</button><span class="num"><strong>${money(spent)}</strong> / ${money(avail)}</span></div>
-    ${progressBar(pct, budgetColor(pct))}
-    <div class="muted small">${avail - spent >= 0 ? `Reste ${money(avail - spent)} à dépenser` : `Dépassé de ${money(spent - avail)}`}</div>
-    ${alerts
-      .map(
-        ({ c, info }) => `<button class="alert-row" data-action="edit-budget" data-id="${c.id}">
-          <span>${esc(c.icon)} ${esc(c.name)}</span>
-          <span style="color:${budgetColor(info.pct)};font-weight:700">${info.pct > 1 ? 'Dépassé de ' + money(-info.left) : Math.round(info.pct * 100) + ' %'}</span>
-        </button>`
-      )
-      .join('')}
-  </div>`;
+  const margin = avail - spent;
+  const over = list.filter((x) => x.info.left < 0).length;
+  const MAX = 6;
+  const items = list
+    .slice(0, MAX)
+    .map(({ c, info }) => {
+      const isOver = info.left < 0;
+      const pct = Number.isFinite(info.pct) ? Math.round(info.pct * 100) + ' %' : '—';
+      return `<li><button class="env" data-action="edit-budget" data-id="${c.id}">
+        <span class="env-head"><span class="env-name"><i style="background:${safeColor(c.color)}"></i><strong class="ellipsis">${esc(c.name)}</strong></span><span class="note num">${money(info.spent)} / ${money(info.available)}</span></span>
+        ${progressBar(info.pct, isOver ? 'var(--expense)' : safeColor(c.color))}
+        <span class="env-foot${isOver ? ' over' : ''}"><span>${isOver ? '⚠ Dépassement de ' + money(-info.left) : money(info.left) + ' restants'}</span><span class="num">${pct}</span></span>
+      </button></li>`;
+    })
+    .join('');
+  return win({
+    ...base,
+    link: `<button class="win-link" data-action="goto-plan" data-value="budgets">Ajuster →</button>`,
+    body: `<div class="budget-sum">
+        <div><strong class="sum-v num">${margin >= 0 ? money(margin) + ' de marge' : money(-margin) + ' de dépassement'}</strong>
+        <span class="note num">${money(spent)} dépensés sur ${money(avail)} prévus</span></div>
+        ${over ? `<span class="pill-alert">⚠ ${over} dépassement${over > 1 ? 's' : ''}</span>` : ''}
+      </div>
+      <ul class="env-grid">${items}</ul>
+      ${list.length > MAX ? `<button class="link small" data-action="goto-plan" data-value="budgets">+ ${list.length - MAX} autre${list.length - MAX > 1 ? 's' : ''} budget${list.length - MAX > 1 ? 's' : ''}</button>` : ''}`,
+  });
 }
 
-function homePlanCards() {
-  let html = '';
-  if (!hasAnyBudget() && state.transactions.length) {
-    html += `<section class="card tip" style="margin-top:14px"><strong>Fixe tes budgets 🎯</strong>
-      <p class="muted small">Définis un plafond par catégorie pour savoir combien il te reste à dépenser.</p>
-      <button class="btn primary" data-action="goto-plan" data-value="budgets">Créer un budget</button></section>`;
+/** Objectifs d'épargne (3 au plus) et épargne non affectée. */
+function homeGoalsCard(g) {
+  const base = { cls: 'home-goals', color: 'teal', icon: 'flag', title: "Objectifs d'épargne" };
+  if (!state.goals.length) {
+    return win({
+      ...base,
+      link: `<button class="win-link" data-action="goto-plan" data-value="goals">Gérer →</button>`,
+      body: `<p class="note">Vacances, coussin de sécurité, nouvel ordi… Réserve de l'argent pour un projet et suis ta progression.</p>
+        <button class="btn primary" data-action="add-goal">Créer un objectif</button>`,
+    });
   }
+  const top = [...state.goals]
+    .sort((a, b) => (goalSaved(a) >= a.target) - (goalSaved(b) >= b.target) || (a.deadline || '9').localeCompare(b.deadline || '9'))
+    .slice(0, 3);
+  const rows = top
+    .map((goal) => {
+      const saved = goalSaved(goal);
+      const pct = goal.target > 0 ? saved / goal.target : 0;
+      return `<li><button class="goal-home" data-action="edit-goal" data-id="${goal.id}">
+        <span class="goal-top"><span class="sym">${esc(goal.icon || '🐷')}</span>
+          <span class="grow"><strong class="ellipsis">${esc(goal.name)}</strong><span class="note num">${money(saved)} / ${money(goal.target)}</span></span>
+          <span class="chev">${ICON.right}</span></span>
+        ${progressBar(pct, safeColor(goal.color))}
+        <span class="note num">${pct >= 1 ? 'Objectif atteint 🎉' : `${Math.round(pct * 100)} % atteints · encore ${money(goal.target - saved)}`}</span>
+      </button></li>`;
+    })
+    .join('');
+  const free = g.savingsTotal - totalSaved();
+  return win({
+    ...base,
+    link: `<button class="win-link" data-action="goto-plan" data-value="goals">Gérer →</button>`,
+    body: `<p class="note">Petit à petit, tes projets prennent forme.</p>
+      <ul class="goals-home">${rows}</ul>
+      ${state.goals.length > 3 ? `<button class="link small" data-action="goto-plan" data-value="goals">Voir les ${state.goals.length} objectifs</button>` : ''}
+      ${g.savings.length && free > 0 ? `<div class="free-line"><span class="note">Épargne non affectée</span><strong class="num pos">${money(free)}</strong></div>` : ''}`,
+  });
+}
 
-  if (state.goals.length) {
-    const top = [...state.goals]
-      .sort((a, b) => (goalSaved(a) >= a.target) - (goalSaved(b) >= b.target) || (a.deadline || '9') .localeCompare(b.deadline || '9'))
-      .slice(0, 3);
-    html += `<div class="section-title">Épargne · ${money(totalSaved())} mis de côté <button class="link" data-action="goto-plan" data-value="goals">Voir</button></div>
-    <section class="card" style="padding:4px 12px"><ul class="list">${top.map(goalRow).join('')}</ul></section>`;
-  }
-
+/** Opérations récurrentes des 7 prochains jours. */
+function homeUpcomingCard() {
   const upcoming = upcomingRecurring(7);
-  if (upcoming.length) {
-    html += `<div class="section-title">Prochains 7 jours <button class="link" data-action="goto-plan" data-value="recurring">Voir</button></div>
-    <section class="card" style="padding:6px 12px"><ul class="list">${upcoming
+  if (!upcoming.length) return '';
+  return win({
+    cls: 'home-upcoming',
+    color: 'terra',
+    icon: 'clock',
+    title: 'Prochains 7 jours',
+    link: `<button class="win-link" data-action="goto-plan" data-value="recurring">Voir →</button>`,
+    body: `<ul class="list">${upcoming
       .slice(0, 4)
       .map(
         (r) => `<li><div class="list-item" style="cursor:default"><span class="left"><span class="date-pill">${esc(shortDate(r.nextDate))}</span><span class="ellipsis">${esc(recName(r))}</span></span><span class="amt num ${r.type}">${signedMoney(r.amount, r.type)}</span></div></li>`
       )
-      .join('')}</ul></section>`;
-  }
-  return html;
+      .join('')}</ul>`,
+  });
 }
 
 /* ---------- Feuilles : budget ---------- */

@@ -140,7 +140,9 @@ test('Données par défaut : 3 comptes, 16 catégories, accueil affiché', async
   await loadApp(375, 760, true);
   eq(app('state.accounts.length'), 3, 'comptes');
   eq(app('state.categories.length'), 16, 'catégories');
-  eq(txt(q('#title').textContent), 'Accueil', 'titre');
+  eq(txt(q('#crumb').textContent), 'Accueil', "fil d'Ariane");
+  eq(txt(q('#title').textContent), 'Les comptes au clair.', 'titre');
+  assert(q('#top-month .month-switch'), "sélecteur de mois dans l'en-tête");
   assert(q('.hero'), 'carte de solde absente');
   assert(txt(q('.tip').textContent).includes('Bienvenue'), 'message de bienvenue absent');
   assert(!q('.recap'), 'pas de récap du mois sans montant saisi');
@@ -371,12 +373,12 @@ test('« + Nouvelle catégorie » : nom, icône, couleur et montant', async () =
   assert(toastText().includes('existe déjà'), 'doublon refusé : ' + toastText());
   setVal('[data-draft="name"]', 'Vacances au ski');
   click('[data-emoji="🏖️"]');
-  click(`[data-action="pick-color"][data-color="#7048e8"]`);
+  click(`[data-action="pick-color"][data-color="#8a6bbe"]`);
   assert(q('#cat-preview').textContent.includes('🏖️'), 'aperçu de l\'icône');
   click('[data-action="budget-save"]');
   eq(app('state.categories.length'), n + 1, 'catégorie créée');
   const c = app('state.categories.at(-1)');
-  eq([c.name, c.icon, c.color, c.kind], ['Vacances au ski', '🏖️', '#7048e8', 'expense'], 'catégorie personnalisée');
+  eq([c.name, c.icon, c.color, c.kind], ['Vacances au ski', '🏖️', '#8a6bbe', 'expense'], 'catégorie personnalisée');
   eq(app(`monthBudgets(currentMonth())["${c.id}"].amount`), 8000, 'budget du mois');
   assert(q(`.budget-row[data-id="${c.id}"]`), 'affichée dans Mes budgets');
 });
@@ -703,6 +705,7 @@ test('Copie automatique avant une mise à jour, données conservées', async () 
   localStorage.setItem(TEST_KEY, OLD_DATA());
   await loadApp(375, 760);
   eq(app('state.transactions.length'), 1, 'opération conservée');
+  eq(app('state.categories[0].color'), '#5c8a6b', 'couleur convertie à la palette rétro');
   const b = backups().find((x) => x.reason === 'Avant la mise à jour');
   assert(b && JSON.parse(b.data).transactions[0].note === 'avant', 'copie avant mise à jour');
 });
@@ -742,6 +745,17 @@ test('Thème clair / sombre / auto', async () => {
   click('[data-action="theme"][data-value="auto"]');
   eq(D.documentElement.dataset.theme, undefined, 'auto');
 });
+test('Bouton de thème de la barre latérale', async () => {
+  goto('settings');
+  click('[data-action="theme"][data-value="light"]');
+  eq(txt(q('.theme-chip').textContent), '☀Mode clair', 'libellé clair');
+  click('.theme-chip');
+  eq(D.documentElement.dataset.theme, 'dark', 'passe en sombre');
+  eq(txt(q('.theme-chip').textContent), '🌙Mode sombre', 'libellé sombre');
+  click('.theme-chip');
+  eq(D.documentElement.dataset.theme, 'light', 'repasse en clair');
+  click('[data-action="theme"][data-value="auto"]');
+});
 const VIEWS = ['home', 'history', 'plan', 'stats', 'accounts', 'settings'];
 async function checkNoOverflow(label) {
   for (const v of VIEWS) {
@@ -755,7 +769,8 @@ test('Mobile (375 px) : barre du bas, bouton +, aucun débordement', async () =>
   await loadApp(375, 760);
   eq(W.getComputedStyle(q('.tabbar')).position, 'fixed', 'barre en bas');
   assert(W.getComputedStyle(q('#fab')).display !== 'none', 'bouton + visible');
-  eq(W.getComputedStyle(q('.side-add')).display, 'none', 'pas de bouton latéral');
+  eq(W.getComputedStyle(q('.top-add')).display, 'none', "pas de bouton Ajouter dans l'en-tête");
+  eq(W.getComputedStyle(q('.side-foot')).display, 'none', 'pas de pied de barre latérale');
   assert(W.getComputedStyle(q('.topbar-settings')).display !== 'none', 'accès aux réglages');
   await checkNoOverflow('Mobile');
 });
@@ -771,12 +786,18 @@ test('Ordinateur (1280 px) : barre latérale, colonnes, fenêtre centrée', asyn
   await loadApp(1280, 800);
   eq(W.getComputedStyle(q('.tabbar')).position, 'sticky', 'barre latérale');
   eq(W.getComputedStyle(q('#fab')).display, 'none', 'bouton flottant masqué');
-  assert(W.getComputedStyle(q('.side-add')).display !== 'none', 'bouton Ajouter latéral');
+  assert(W.getComputedStyle(q('.top-add')).display !== 'none', "bouton Ajouter dans l'en-tête");
+  assert(W.getComputedStyle(q('.side-foot')).display !== 'none', 'pied de barre latérale');
   assert(W.getComputedStyle(q('.tab-settings')).display !== 'none', 'Réglages dans la barre');
   app('goto("home")');
-  const cols = qa('.dash > .col').map((c) => c.getBoundingClientRect());
-  assert(cols.length === 2 && Math.abs(cols[0].top - cols[1].top) < 2 && cols[1].left > cols[0].right, 'accueil en 2 colonnes');
-  click('.side-add');
+  const sideBySide = (sel) => {
+    const r = qa(sel).map((c) => c.getBoundingClientRect());
+    return r.length === 2 && Math.abs(r[0].top - r[1].top) < 2 && r[1].left > r[0].right;
+  };
+  assert(sideBySide('.r2 > .home-budgets, .r2 > .home-spend'), 'budgets et dépenses côte à côte');
+  assert(sideBySide('.r3 > .home-ops, .r3 > .home-stack'), 'opérations et objectifs côte à côte');
+  assert(!q('.ops-head') || W.getComputedStyle(q('.ops-head')).display !== 'none', 'en-tête du tableau des opérations');
+  click('.top-add');
   const r = q('.sheet').getBoundingClientRect();
   assert(Math.abs(r.left + r.width / 2 - W.innerWidth / 2) < 3 && r.width <= 520, 'fenêtre centrée');
   click('[data-action="close-sheet"]');

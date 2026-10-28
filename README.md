@@ -14,6 +14,7 @@ Application web de gestion de budget personnelle, inspirée des applis les plus 
 - **Import CSV** des relevés bancaires (détection des colonnes, catégorisation automatique, doublons repérés) et **export CSV** pour Excel.
 - **Sauvegarde** JSON (export et restauration), **copies de sécurité automatiques** (avant chaque mise à jour, chaque jour, avant chaque restauration ou effacement), rappel d'export, **code PIN** optionnel, thème clair, sombre ou automatique.
 - Interface adaptée au **mobile** (barre d'onglets en bas) et au **PC** (barre latérale, tableau de bord en colonnes).
+- Design « Les comptes au clair » tiré de la maquette Figma : fenêtres rétro à barre de titre colorée, polices Space Mono et Inter, thèmes clair et sombre (bouton dans la barre latérale).
 
 ## Utilisation
 
@@ -34,7 +35,7 @@ Chaque `git push` sur `main` met le site à jour en 1 à 2 minutes. Les données
 
 ## Tests
 
-Ouvre `tests/index.html` via le serveur local (`http://localhost:8765/tests/`) et clique sur **Lancer les tests**. La suite contient 63 tests de bout en bout (dont les copies de sécurité et la reprise des données après une mise à jour) : ajout, historique, comptes (solde négatif compris), catégories, budgets mensuels et duplication, épargne, récurrences, statistiques, import et export CSV, sauvegarde, code PIN, thèmes, et affichage en 320, 375, 768 et 1280 px. Elle utilise un profil séparé (`?profil=test`) et ne touche jamais aux vraies données.
+Ouvre `tests/index.html` via le serveur local (`http://localhost:8765/tests/`) et clique sur **Lancer les tests**. La suite contient 64 tests de bout en bout (dont les copies de sécurité et la reprise des données après une mise à jour) : ajout, historique, comptes (solde négatif compris), catégories, budgets mensuels et duplication, épargne, récurrences, statistiques, import et export CSV, sauvegarde, code PIN, thèmes, et affichage en 320, 375, 768 et 1280 px. Elle utilise un profil séparé (`?profil=test`) et ne touche jamais aux vraies données.
 
 ## Structure
 

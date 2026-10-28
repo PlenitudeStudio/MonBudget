@@ -49,7 +49,7 @@ const shortDate = (iso) => parseISO(iso).toLocaleDateString('fr-FR', { day: 'num
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-const safeColor = (c) => (/^#[0-9a-f]{6}$/i.test(c) ? c : '#868e96');
+const safeColor = (c) => (/^#[0-9a-f]{6}$/i.test(c) ? c : '#8b8478');
 
 /** "12,50" / "1 200.5 €" -> centimes (NaN si vide ou invalide) */
 function parseAmount(str) {
@@ -66,10 +66,25 @@ const ICON = {
   close: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   back: '<svg viewBox="0 0 24 24"><path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1zM17 9l-6 6M11 9l6 6"/></svg>',
   search: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  wallet: '<svg viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>',
+  landmark: '<svg viewBox="0 0 24 24"><path d="M3 22h18M6 18v-7M10 18v-7M14 18v-7M18 18v-7M12 2 20 7H4z"/></svg>',
+  swap: '<svg viewBox="0 0 24 24"><path d="M8 3 4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"/></svg>',
+  pie: '<svg viewBox="0 0 24 24"><path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"/><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/></svg>',
+  list: '<svg viewBox="0 0 24 24"><path d="M3 6h.01M3 12h.01M3 18h.01M8 6h13M8 12h13M8 18h13"/></svg>',
+  flag: '<svg viewBox="0 0 24 24"><path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"/></svg>',
+  clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  upRight: '<svg viewBox="0 0 24 24"><path d="M7 7h10v10M7 17 17 7"/></svg>',
 };
 
 /* ---------- Données par défaut ---------- */
-const PALETTE = ['#0f766e', '#22a06b', '#2f9e44', '#4c6ef5', '#1c7ed6', '#1098ad', '#7048e8', '#ae3ec9', '#d6336c', '#e03131', '#e8590c', '#f08c00', '#fab005', '#868e96'];
+// Palette rétro de la maquette. OLD_PALETTE : couleurs des versions 1 à 6, converties une fois (même ordre).
+const PALETTE = ['#3a8c85', '#5c8a6b', '#2d7a55', '#5b8db8', '#4a7a9c', '#4f9fa8', '#8a6bbe', '#a8659e', '#c4708a', '#c14030', '#d4634a', '#d98a3a', '#c89a30', '#8b8478'];
+const OLD_PALETTE = ['#0f766e', '#22a06b', '#2f9e44', '#4c6ef5', '#1c7ed6', '#1098ad', '#7048e8', '#ae3ec9', '#d6336c', '#e03131', '#e8590c', '#f08c00', '#fab005', '#868e96'];
+const retroColor = (c) => {
+  const i = OLD_PALETTE.indexOf(String(c).toLowerCase());
+  return i >= 0 ? PALETTE[i] : c;
+};
 const EMOJIS = ['🛒', '🏠', '🚗', '⛽', '🚆', '🍽️', '☕', '🍔', '🎮', '🎬', '🎵', '📚', '💊', '🏥', '📱', '💻', '💡', '💧', '🛍️', '👕', '💇', '🎁', '🐶', '👶', '🎓', '✈️', '🏖️', '🏋️', '⚽', '🧾', '🏦', '💳', '💼', '⭐', '↩️', '🏷️', '💶', '📈', '🐷', '📦', '🔧', '🚬', '🍷', '❤️', '🎉', '🧸'];
 const ACCOUNT_TYPES = {
   checking: { label: 'Compte courant', icon: '🏦' },
@@ -97,11 +112,11 @@ function defaultState() {
     ['Remboursements', '↩️', '#1098ad', 'income'],
     ['Ventes', '🏷️', '#1c7ed6', 'income'],
     ['Autre revenu', '💶', '#868e96', 'income', true],
-  ].map(([name, icon, color, kind, fallback]) => ({ id: uid(), name, icon, color, kind, fallback: !!fallback }));
+  ].map(([name, icon, color, kind, fallback]) => ({ id: uid(), name, icon, color: retroColor(color), kind, fallback: !!fallback }));
   const accounts = [
-    { id: uid(), name: 'Compte courant', type: 'checking', initial: 0, color: '#0f766e' },
-    { id: uid(), name: 'Livret A', type: 'savings', initial: 0, color: '#2f9e44' },
-    { id: uid(), name: 'Espèces', type: 'cash', initial: 0, color: '#f08c00' },
+    { id: uid(), name: 'Compte courant', type: 'checking', initial: 0, color: '#5b8db8' },
+    { id: uid(), name: 'Livret A', type: 'savings', initial: 0, color: '#3a8c85' },
+    { id: uid(), name: 'Espèces', type: 'cash', initial: 0, color: '#d98a3a' },
   ];
   return {
     version: DATA_VERSION,
@@ -113,7 +128,7 @@ function defaultState() {
     budgetCopied: {},
     goals: [],
     recurring: [],
-    settings: { theme: 'auto', lastAccountId: accounts[0].id },
+    settings: { theme: 'auto', lastAccountId: accounts[0].id, retroColors: true },
   };
 }
 
@@ -142,12 +157,17 @@ function normalizeState(s) {
   if (!Array.isArray(s.goals)) s.goals = [];
   s.goals.forEach((g) => { if (!Array.isArray(g.moves)) g.moves = []; });
   if (!Array.isArray(s.recurring)) s.recurring = [];
+  // Version 7 : les couleurs de l'ancienne palette passent une fois à la palette rétro équivalente
+  if (!s.settings.retroColors) {
+    for (const list of [s.categories, s.accounts, s.goals]) list.forEach((x) => { if (x.color) x.color = retroColor(x.color); });
+    s.settings.retroColors = true;
+  }
   // Garantir une catégorie de secours par type
   for (const kind of ['expense', 'income']) {
     if (!s.categories.some((c) => c.kind === kind && c.fallback)) {
       s.categories.push({
         id: uid(), name: kind === 'expense' ? 'Autre' : 'Autre revenu', icon: kind === 'expense' ? '📦' : '💶',
-        color: '#868e96', kind, fallback: true,
+        color: '#8b8478', kind, fallback: true,
       });
     }
   }
@@ -157,7 +177,7 @@ function normalizeState(s) {
 /* ---------- Copies de sécurité automatiques ----------
    Gardées dans ce navigateur, à côté des données : une avant chaque mise à jour de l'appli,
    une par jour, une avant chaque restauration, et toujours une si les données sont illisibles. */
-const APP_VERSION = 6;
+const APP_VERSION = 7;
 const BACKUP_KEY = STORAGE_KEY + '.backups';
 const MAX_BACKUPS = 6;
 let loadIssue = false;
@@ -339,10 +359,18 @@ function txRow(t) {
   </button></li>`;
 }
 
+/** Fenêtre « rétro » : barre de titre colorée + contenu. Le titre et le lien doivent déjà être échappés. */
+function win({ cls = '', color = 'blue', icon = '', title, link = '', body }) {
+  return `<section class="card win ${cls}" style="--bar:var(--c-${color});--bar-ink:var(--c-${color}-ink)">
+    <header class="win-bar">${icon ? ICON[icon] : ''}<h3>${title}</h3>${link}<i class="win-ctl" aria-hidden="true"></i></header>
+    <div class="win-body">${body}</div>
+  </section>`;
+}
+
 function monthSwitch() {
   return `<div class="month-switch">
     <button class="icon-btn" data-action="month-prev" aria-label="Mois précédent">${ICON.left}</button>
-    <span class="label">${esc(monthLabel(ui.month))}</span>
+    <span class="label">${ICON.calendar}<span>${esc(monthLabel(ui.month))}</span></span>
     <button class="icon-btn" data-action="month-next" aria-label="Mois suivant">${ICON.right}</button>
   </div>`;
 }
@@ -367,40 +395,8 @@ function donut(slices, total, centerValue, centerLabel) {
 function renderHome() {
   const { income, expense, byCat } = monthStats(ui.month);
   const rest = income - expense;
-  let html = monthSwitch() + '<div class="dash"><div class="col">';
-
   const g = balanceGroups();
-  html += `<section class="card hero">
-    <div class="label">Disponible sur ${g.avail.length > 1 ? 'tes comptes' : 'ton compte'}</div>
-    <div class="amount num">${money(g.availTotal)}</div>
-    ${g.avail.length > 1 ? accountLines(g.avail) : ''}
-    ${ui.month === currentMonth() ? heroForecast() : ''}
-  </section>`;
-
-  if (g.savings.length) {
-    const reserved = state.goals.length ? totalSaved() : 0;
-    html += `<section class="card savings-card">
-      <button class="savings-head" data-action="goto" data-view="accounts">
-        <span><span class="k">Épargne totale</span><span class="v num">${money(g.savingsTotal)}</span></span>
-        <span class="muted">›</span>
-      </button>
-      ${accountLines(g.savings)}
-      ${reserved ? `<p class="muted small" style="margin:6px 0 0">dont ${money(reserved)} réservés pour tes objectifs</p>` : ''}
-    </section>`;
-  }
-
-  // Récap du mois : seulement quand des montants sont saisis pour ce mois
-  if (income || expense) {
-    html += `<section class="card recap">
-      <div class="chart-head"><h3>Récap de ${esc(monthLong(ui.month))}</h3>${ui.month !== currentMonth() ? `<span class="muted small">${parseISO(ui.month + '-01').getFullYear()}</span>` : ''}</div>
-      <div class="stat-grid">
-        <div><div class="k">Revenus</div><div class="v num">${money(income)}</div></div>
-        <div><div class="k">Dépenses</div><div class="v num">${money(expense)}</div></div>
-        <div><div class="k">Solde du mois</div><div class="v num" style="color:${rest >= 0 ? 'var(--income)' : 'var(--expense)'}">${rest > 0 ? '+' : rest < 0 ? '−' : ''}${money(Math.abs(rest))}</div></div>
-      </div>
-      ${homeBudgetRecap()}
-    </section>`;
-  }
+  let html = '';
 
   if (state.transactions.length === 0) {
     html += `<section class="card tip">
@@ -412,47 +408,146 @@ function renderHome() {
   }
   html += exportReminder();
 
-  html += homePlanCards();
-  html += '</div><div class="col">';
+  // Ligne 1 : disponible, épargne, récap du mois
+  html += '<div class="home-row r1">';
+  html += win({
+    cls: 'hero',
+    color: 'blue',
+    icon: 'wallet',
+    title: `Disponible sur ${g.avail.length > 1 ? 'tes comptes' : 'ton compte'}`,
+    link: `<button class="win-link icon-only" data-action="goto" data-view="accounts" aria-label="Voir mes comptes">${ICON.upRight}</button>`,
+    body: `<div class="amount num">${money(g.availTotal)}</div>
+      <p class="note">Pour le quotidien · hors épargne</p>
+      ${g.avail.length > 1 ? accountLines(g.avail) : ''}
+      ${ui.month === currentMonth() ? heroForecast() : ''}`,
+  });
 
-  // Dépenses par catégorie
-  html += `<div class="section-title first">Dépenses par catégorie</div>`;
+  if (g.savings.length) {
+    const reserved = state.goals.length ? totalSaved() : 0;
+    html += win({
+      cls: 'savings-card',
+      color: 'teal',
+      icon: 'landmark',
+      title: 'Épargne totale',
+      body: `<button class="savings-head" data-action="goto" data-view="accounts"><span class="v num">${money(g.savingsTotal)}</span></button>
+        <p class="note">${reserved ? `dont ${money(reserved)} réservés pour tes objectifs` : 'De côté, pour la suite.'}</p>
+        ${accountLines(g.savings)}`,
+    });
+  }
+
+  // Récap du mois : seulement quand des montants sont saisis pour ce mois
+  if (income || expense) {
+    const year = ui.month !== currentMonth() ? ' ' + parseISO(ui.month + '-01').getFullYear() : '';
+    html += win({
+      cls: 'recap',
+      color: 'terra',
+      icon: 'swap',
+      title: `Récap de ${esc(monthLong(ui.month))}${year}`,
+      body: `<div class="flows">
+          <div><span class="note"><b class="pos">↗</b> Revenus</span><span class="flow-v pos num">+${money(income)}</span></div>
+          <div><span class="note"><b class="neg">↘</b> Dépenses</span><span class="flow-v neg num">−${money(expense)}</span></div>
+        </div>
+        <div class="month-net"><span>Solde du mois</span><span class="v num ${rest >= 0 ? 'pos' : 'neg'}">${rest > 0 ? '+' : rest < 0 ? '−' : ''}${money(Math.abs(rest))}</span></div>
+        <p class="note tiny">Virements entre comptes exclus du récapitulatif.</p>`,
+    });
+  }
+  html += '</div>';
+
+  // Ligne 2 : budgets et dépenses par catégorie
+  html += `<div class="home-row r2">${homeBudgetsCard()}${homeSpendCard(expense, byCat)}</div>`;
+  // Ligne 3 : dernières opérations, objectifs et échéances
+  html += `<div class="home-row r3">${homeRecentCard()}<div class="home-stack">${homeGoalsCard(g)}${homeUpcomingCard()}</div></div>`;
+  return html;
+}
+
+function homeSpendCard(expense, byCat) {
+  let body;
   if (expense === 0) {
-    html += `<section class="card empty"><span class="big">🍃</span>Aucune dépense ce mois-ci.</section>`;
+    body = `<div class="empty"><span class="big">🍃</span>Aucune dépense ${ui.month === currentMonth() ? 'ce mois-ci' : 'ce mois-là'}.</div>`;
   } else {
     const entries = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
     const MAX = 6;
     const slices = entries.slice(0, MAX).map(([id, value]) => {
       const c = catById(id);
-      return { id, value, color: c?.color, name: c?.name || 'Sans catégorie', icon: c?.icon };
+      return { id, value, color: c?.color, name: c?.name || 'Sans catégorie' };
     });
     if (entries.length > MAX) {
-      const rest = entries.slice(MAX).reduce((s, [, v]) => s + v, 0);
-      slices.push({ id: '', value: rest, color: '#adb5bd', name: 'Autres catégories' });
+      const others = entries.slice(MAX).reduce((s, [, v]) => s + v, 0);
+      slices.push({ id: '', value: others, color: '#8b8478', name: 'Autres catégories' });
     }
-    html += `<section class="card"><div class="donut-wrap">
-      ${donut(slices, expense, money(expense), 'dépensés')}
-      <ul class="legend">${slices
-        .map(
-          (s) => `<li><button ${s.id ? `data-action="cat-filter" data-id="${s.id}"` : 'data-action="goto" data-view="history"'}>
-            <span class="dot" style="background:${safeColor(s.color)}"></span>
-            <span class="name">${esc(s.icon ? s.icon + ' ' : '')}${esc(s.name)}</span>
-            <span class="num small"><strong>${money(s.value)}</strong> <span class="pct">${Math.round((s.value / expense) * 100)}%</span></span>
-          </button></li>`
-        )
-        .join('')}</ul>
-    </div></section>`;
+    const top = slices[0];
+    const topPct = Math.round((top.value / expense) * 100);
+    const analysis =
+      slices.length === 1
+        ? `Toutes tes dépenses sont dans « ${esc(top.name)} ».`
+        : topPct >= 45 && topPct <= 55
+          ? `« ${esc(top.name)} » représente près de la moitié de tes dépenses.`
+          : `« ${esc(top.name)} » est ton premier poste de dépense (${topPct} %).`;
+    body = `<div class="spend-total"><span class="v num">${money(expense)}</span><span class="note">${ui.month === currentMonth() ? 'ce mois-ci' : esc(monthLabel(ui.month))}</span></div>
+      <div class="donut-wrap">
+        ${donut(slices, expense, topPct + ' %', esc(top.name))}
+        <ol class="legend">${slices
+          .map(
+            (s, i) => `<li><button ${s.id ? `data-action="cat-filter" data-id="${s.id}"` : 'data-action="goto" data-view="history"'}>
+              <span class="dot" style="background:${safeColor(s.color)}"></span>
+              <span class="idx">${i + 1}.</span>
+              <span class="name">${esc(s.name)}</span>
+              <span class="num v">${money(s.value)}</span>
+            </button></li>`
+          )
+          .join('')}</ol>
+      </div>
+      <p class="note">${analysis}</p>`;
   }
+  return win({ cls: 'home-spend', color: 'blue', icon: 'pie', title: 'Dépenses par catégorie', body });
+}
 
-  // Dernières opérations
-  const recent = sortedTx().slice(0, 6);
-  html += `<div class="section-title">Dernières opérations ${recent.length ? '<button class="link" data-action="goto" data-view="history">Tout voir</button>' : ''}</div>`;
-  if (recent.length === 0) {
-    html += `<section class="card empty"><span class="big">🧾</span>Aucune opération pour l'instant.<br><button class="btn primary" style="margin-top:12px" data-action="open-add">Ajouter une opération</button></section>`;
+/** Ligne d'opération façon tableau (date, libellé, catégorie, compte, montant). */
+function opRow(t) {
+  const acc = accById(t.accountId);
+  let title, tag, accTxt;
+  if (t.type === 'transfer') {
+    const to = accById(t.toAccountId);
+    title = t.note || 'Virement';
+    tag = `<span class="tag" style="--tag:var(--text-2)">Virement ↔</span>`;
+    accTxt = `${acc?.name || '?'} → ${to?.name || '?'}`;
   } else {
-    html += `<section class="card" style="padding:6px 12px"><ul class="tx-list">${recent.map(txRow).join('')}</ul></section>`;
+    const cat = catById(t.categoryId);
+    title = t.note || cat?.name || 'Sans catégorie';
+    tag = `<span class="tag" style="--tag:${safeColor(cat?.color)}">${t.type === 'income' ? '↗ ' : ''}${esc(cat?.name || 'Sans catégorie')}</span>`;
+    accTxt = acc?.name || '?';
   }
-  return html + '</div></div>';
+  return `<li><button class="op" data-action="edit-tx" data-id="${t.id}">
+    <span class="op-date">${esc(shortDate(t.date))}</span>
+    <span class="op-lib ellipsis">${t.recurringId ? '🔁 ' : ''}${esc(title)}</span>
+    <span class="op-cat">${tag}</span>
+    <span class="op-acc ellipsis">${esc(accTxt)}</span>
+    <span class="op-amt amt num ${t.type}">${signedMoney(t.amount, t.type)}</span>
+  </button></li>`;
+}
+
+function homeRecentCard() {
+  const recent = sortedTx().slice(0, 6);
+  if (!recent.length) {
+    return win({
+      cls: 'home-ops',
+      color: 'tan',
+      icon: 'list',
+      title: 'Dernières opérations',
+      body: `<div class="empty"><span class="big">🧾</span>Aucune opération pour l'instant.<br><button class="btn primary" style="margin-top:12px" data-action="open-add">Ajouter une opération</button></div>`,
+    });
+  }
+  const n = recent.length;
+  return win({
+    cls: 'home-ops',
+    color: 'tan',
+    icon: 'list',
+    title: 'Dernières opérations',
+    link: `<button class="win-link" data-action="goto" data-view="history">Tout voir →</button>`,
+    body: `<div class="ops-head" aria-hidden="true"><span>Date</span><span>Libellé</span><span>Catégorie</span><span>Compte</span><span>Montant</span></div>
+      <ul class="ops">${recent.map(opRow).join('')}</ul>
+      <div class="ops-foot"><span>${recent.some((t) => t.type === 'transfer') ? "↔ Les virements déplacent l'argent, sans compter comme dépense." : ''}</span><span class="mono">${n} opération${n > 1 ? 's' : ''}</span></div>`,
+  });
 }
 
 /* ---------- Écran : Opérations ---------- */
@@ -667,8 +762,32 @@ function exportReminder() {
 }
 
 /* ---------- Rendu principal ---------- */
+const VIEW_HEAD = {
+  home: ['Les comptes au clair.', 'Ton mois en un regard. Tes projets en ligne de mire.'],
+  history: ['Opérations', 'Cherche, filtre et corrige tes dépenses et revenus.'],
+  plan: ['Budget', 'Tes plafonds du mois, ton épargne et tes échéances.'],
+  stats: ['Statistiques', "D'où vient ton argent, où il part, où tu vas."],
+  accounts: ['Comptes', 'Le solde de chacun de tes comptes.'],
+  settings: ['Réglages', 'Apparence, catégories, sauvegardes et sécurité.'],
+};
+
+const isDarkTheme = () =>
+  state.settings.theme === 'dark' || (state.settings.theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+
+function updateThemeChip() {
+  const dark = isDarkTheme();
+  $('.theme-chip .theme-ico').textContent = dark ? '🌙' : '☀';
+  $('.theme-chip .theme-label').textContent = dark ? 'Mode sombre' : 'Mode clair';
+}
+
 function render() {
-  $('#title').textContent = VIEWS[ui.view];
+  const [title, subtitle] = VIEW_HEAD[ui.view];
+  $('#title').textContent = title;
+  $('#crumb').textContent = VIEWS[ui.view];
+  $('#subtitle').textContent = subtitle;
+  $('#top-month').innerHTML = ui.view === 'home' ? monthSwitch() : '';
+  document.body.dataset.view = ui.view;
+  updateThemeChip();
   document.title = `${VIEWS[ui.view]} · Mon Budget`;
   document.querySelectorAll('.tab').forEach((b) => {
     if (b.dataset.view === ui.view) b.setAttribute('aria-current', 'page');
@@ -1138,6 +1257,11 @@ document.addEventListener('click', (e) => {
       save();
       applyTheme();
       return render();
+    case 'theme-toggle':
+      state.settings.theme = isDarkTheme() ? 'light' : 'dark';
+      save();
+      applyTheme();
+      return render();
     case 'edit-cat': return openCategory(id);
     case 'add-cat': return openCategory(null, el.dataset.kind);
     case 'export': return exportData();
@@ -1289,6 +1413,7 @@ window.addEventListener('resize', () => {
 /* ---------- Démarrage ---------- */
 applyTheme();
 setupChartTooltip();
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', updateThemeChip);
 const startCreated = runRecurring();
 render();
 if (state.settings.pin) showLock();
