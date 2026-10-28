@@ -361,6 +361,38 @@ test('Report du reste sur le mois suivant', async () => {
   const info = app(`budgetInfo("${resto}", currentMonth())`);
   eq([info.carry, info.available], [4000, 14000], 'report de 40 €');
 });
+test('« + Nouvelle catégorie » : nom, icône, couleur et montant', async () => {
+  const n = app('state.categories.length');
+  click('[data-action="budget-new-cat"]');
+  eq(txt(q('#sheet-title').textContent), 'Nouvelle catégorie', 'titre');
+  setVal('[data-draft="name"]', 'courses');
+  setVal('[data-draft="amountStr"]', '80');
+  click('[data-action="budget-save"]');
+  assert(toastText().includes('existe déjà'), 'doublon refusé : ' + toastText());
+  setVal('[data-draft="name"]', 'Vacances au ski');
+  click('[data-emoji="🏖️"]');
+  click(`[data-action="pick-color"][data-color="#7048e8"]`);
+  assert(q('#cat-preview').textContent.includes('🏖️'), 'aperçu de l\'icône');
+  click('[data-action="budget-save"]');
+  eq(app('state.categories.length'), n + 1, 'catégorie créée');
+  const c = app('state.categories.at(-1)');
+  eq([c.name, c.icon, c.color, c.kind], ['Vacances au ski', '🏖️', '#7048e8', 'expense'], 'catégorie personnalisée');
+  eq(app(`monthBudgets(currentMonth())["${c.id}"].amount`), 8000, 'budget du mois');
+  assert(q(`.budget-row[data-id="${c.id}"]`), 'affichée dans Mes budgets');
+});
+test('Modifier une catégorie depuis son budget', async () => {
+  const id = catId('Vacances au ski');
+  click(`[data-action="edit-budget"][data-id="${id}"]`);
+  setVal('[data-draft="name"]', 'Ski');
+  setVal('[data-draft="amountStr"]', '120');
+  click('[data-emoji="⚽"]');
+  click('[data-action="budget-save"]');
+  eq([app(`catById("${id}").name`), app(`catById("${id}").icon`), app(`monthBudgets(currentMonth())["${id}"].amount`)], ['Ski', '⚽', 12000], 'catégorie et budget modifiés');
+  // On la retire pour ne pas fausser les tests suivants
+  click(`[data-action="edit-budget"][data-id="${id}"]`);
+  click('[data-action="budget-delete"]');
+  app(`state.categories = state.categories.filter(c => c.id !== "${id}"); save(); render();`);
+});
 test('Budgets propres à chaque mois (pas de reprise automatique)', async () => {
   const courses = catId('Courses');
   const prev = app('shiftMonth(currentMonth(), -1)');

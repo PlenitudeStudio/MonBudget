@@ -410,6 +410,9 @@ li.goal + li.goal { border-top: 1px solid var(--border); }
 .recap-budgets { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
 .recap-budgets .link { font-size: .85rem; }
 .dup-toggle { margin-bottom: 14px; padding: 12px 14px; }
+.cat-style { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 12px; }
+.cat-style summary { cursor: pointer; font-size: .9rem; }
+.cat-style .emoji-grid button { background: var(--surface); }
 
 /* Saisie d'un solde avec signe (+ / −) */
 .input-sign { display: flex; gap: 8px; }

@@ -157,7 +157,7 @@ function normalizeState(s) {
 /* ---------- Copies de sécurité automatiques ----------
    Gardées dans ce navigateur, à côté des données : une avant chaque mise à jour de l'appli,
    une par jour, une avant chaque restauration, et toujours une si les données sont illisibles. */
-const APP_VERSION = 5;
+const APP_VERSION = 6;
 const BACKUP_KEY = STORAGE_KEY + '.backups';
 const MAX_BACKUPS = 6;
 let loadIssue = false;

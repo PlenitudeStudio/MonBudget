@@ -239,9 +239,9 @@ function renderBudgetsTab() {
     ${progressBar(totalAvail > 0 ? totalSpent / totalAvail : 0, budgetColor(totalAvail > 0 ? totalSpent / totalAvail : 0))}` : ''}
   </section>`;
 
-  html += `<div class="section-title">Mes budgets</div>`;
+  html += `<div class="section-title">Mes budgets <button class="link" data-action="budget-new-cat">+ Nouvelle catégorie</button></div>`;
   if (!withBudget.length) {
-    html += `<section class="card empty"><span class="big">🎯</span>Aucun budget pour l'instant.<br><span class="small">Choisis une catégorie ci-dessous pour fixer un plafond mensuel.</span></section>`;
+    html += `<section class="card empty"><span class="big">🎯</span>Aucun budget pour ${esc(monthLabel(ui.month))}.<br><span class="small">Choisis une catégorie ci-dessous ou crée la tienne.</span><br><button class="btn primary" style="margin-top:12px" data-action="budget-new-cat">+ Nouvelle catégorie</button></section>`;
   } else {
     html += `<section class="card" style="padding:4px 12px"><ul class="list">${withBudget
       .map(({ c, info }) => {
@@ -415,17 +415,40 @@ function openBudget(catId) {
   if (!c) return;
   const month = ui.month;
   const b = monthBudgets(month)[catId];
-  openSheet('budget', { catId, month, amountStr: b ? centsToInput(b.amount) : '', rollover: b ? !!b.rollover : false, avg: averageSpend(catId) });
+  openSheet('budget', {
+    catId, month, name: c.name, icon: c.icon, color: c.color,
+    amountStr: b ? centsToInput(b.amount) : '', rollover: b ? !!b.rollover : false, avg: averageSpend(catId),
+  });
+}
+
+/** « + » de l'onglet Budgets : nouvelle catégorie de dépense avec son budget du mois. */
+function openNewBudgetCategory() {
+  const used = new Set(state.categories.map((c) => c.color));
+  openSheet('budget', {
+    catId: null, month: ui.month, name: '', icon: '📦', color: PALETTE.find((p) => !used.has(p)) || PALETTE[0],
+    amountStr: '', rollover: false, avg: 0,
+  });
 }
 
 function budgetSheet(d) {
-  const c = catById(d.catId);
-  const info = budgetInfo(d.catId, d.month);
-  const exists = !!monthBudgets(d.month)[d.catId];
-  return `${sheetHead(exists ? 'Modifier le budget' : 'Nouveau budget')}
-    <div class="row-center" style="margin-bottom:4px">${catIcon(c, 48)}<strong style="font-size:1.1rem">${esc(c.name)}</strong></div>
+  const info = d.catId ? budgetInfo(d.catId, d.month) : null;
+  const exists = !!(d.catId && monthBudgets(d.month)[d.catId]);
+  const title = !d.catId ? 'Nouvelle catégorie' : exists ? 'Modifier le budget' : 'Nouveau budget';
+  return `${sheetHead(title)}
+    <div class="row-center" style="margin-bottom:4px"><span id="cat-preview">${catIcon(d, 48)}</span></div>
     <p class="muted small" style="text-align:center;margin:0 0 14px">Budget de ${esc(monthLabel(d.month))}</p>
-    <label class="field"><span>Plafond du mois (€)</span><input class="input" data-draft="amountStr" inputmode="decimal" placeholder="Ex. 300" value="${esc(d.amountStr)}"></label>
+    <div class="row2">
+      <label class="field"><span>Nom de la catégorie</span><input class="input" data-draft="name" maxlength="30" value="${esc(d.name)}" placeholder="Ex. Animaux"></label>
+      <label class="field"><span>Plafond du mois (€)</span><input class="input" data-draft="amountStr" inputmode="decimal" placeholder="Ex. 300" value="${esc(d.amountStr)}"></label>
+    </div>
+    <details class="field cat-style" ${d.catId ? '' : 'open'}><summary><strong>Icône et couleur</strong></summary>
+      <div class="emoji-grid" style="margin:8px 0 10px">${EMOJIS.map(
+        (e) => `<button data-action="pick-emoji" data-emoji="${e}" aria-pressed="${d.icon === e}">${e}</button>`
+      ).join('')}</div>
+      <div class="swatches">${PALETTE.map(
+        (c) => `<button class="swatch" style="background:${c}" data-action="pick-color" data-color="${c}" aria-label="Couleur ${c}" aria-pressed="${d.color === c}"></button>`
+      ).join('')}</div>
+    </details>
     ${d.avg > 0 ? `<button class="chip" style="margin-bottom:12px" data-action="budget-suggest">Moyenne des 3 derniers mois : ${money(d.avg)}</button>` : ''}
     <label class="toggle"><input type="checkbox" data-draft="rollover" ${d.rollover ? 'checked' : ''}><span><strong>Reprendre le reste du mois précédent</strong><br><span class="muted small">Ajoute ce qui n'a pas été dépensé le mois d'avant (ou retire le dépassement), si cette catégorie y avait un budget.</span></span></label>
     ${info ? `<p class="muted small">${money(info.spent)} dépensés sur ${money(info.available)}${info.carry ? ` (dont ${info.carry > 0 ? '+' : '−'}${money(Math.abs(info.carry))} reportés)` : ''}.</p>` : ''}
@@ -437,14 +460,25 @@ function budgetSheet(d) {
 
 function saveBudget() {
   const d = sheet.draft;
+  const name = (d.name || '').trim();
   const amount = parseAmount(d.amountStr);
+  if (!name) return toast('Donne un nom à la catégorie');
+  const twin = state.categories.find((c) => c.kind === 'expense' && c.id !== d.catId && norm(c.name) === norm(name));
+  if (twin) return toast(`La catégorie « ${twin.name} » existe déjà`);
   if (Number.isNaN(amount) || amount <= 0) return toast('Saisis un plafond supérieur à 0');
+  const isNew = !d.catId;
+  if (isNew) {
+    d.catId = uid();
+    state.categories.push({ id: d.catId, name, icon: d.icon, color: safeColor(d.color), kind: 'expense', fallback: false });
+  } else {
+    Object.assign(catById(d.catId), { name, icon: d.icon, color: safeColor(d.color) });
+  }
   const prev = monthBudgets(d.month)[d.catId];
   setBudget(d.month, d.catId, { amount, rollover: !!d.rollover });
   save();
   closeSheet();
   render();
-  toast(prev ? 'Budget modifié' : `Budget créé pour ${monthLabel(d.month)}`);
+  toast(isNew ? `Catégorie « ${name} » créée avec son budget` : prev ? 'Budget modifié' : `Budget créé pour ${monthLabel(d.month)}`);
 }
 
 function deleteBudget() {
@@ -708,6 +742,7 @@ function planAction(action, el, d) {
     case 'plan-tab': ui.planTab = el.dataset.value; render(); return true;
     case 'goto-plan': ui.planTab = el.dataset.value || 'budgets'; goto('plan'); return true;
     case 'edit-budget': if (sheet) closeSheet(); openBudget(el.dataset.id); return true;
+    case 'budget-new-cat': if (sheet) closeSheet(); openNewBudgetCategory(); return true;
     case 'budget-suggest':
       d.amountStr = centsToInput(d.avg);
       sheetBody.querySelector('[data-draft="amountStr"]').value = d.amountStr;
